@@ -207,17 +207,17 @@ function bounce(t)
 end
 
 function getTargets()
-    list = {}
+    local list = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        root = p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+        local root = p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart")
         if root then
             table.insert(list, { name = p.Name, displayName = p.DisplayName, root = root, userId = p.UserId, player = p })
         end
     end
 
-    live = workspace:FindFirstChild("Live")
-    dummy = live and live:FindFirstChild("Weakest Dummy")
-    dummyRoot = dummy and dummy:FindFirstChild("HumanoidRootPart")
+    local live = workspace:FindFirstChild("Live")
+    local dummy = live and live:FindFirstChild("Weakest Dummy")
+    local dummyRoot = dummy and dummy:FindFirstChild("HumanoidRootPart")
     if dummyRoot then
         table.insert(list, { name = "Weakest Dummy", displayName = "Weakest Dummy", root = dummyRoot, model = dummy })
     end
@@ -226,7 +226,7 @@ function getTargets()
 end
 
 function pickTarget()
-    list = getTargets()
+    local list = getTargets()
     if #list == 0 then
         return nil
     end
@@ -1137,14 +1137,14 @@ end
 
 function bindFailsafe(character)
     failsafe.bindId = failsafe.bindId + 1
-    myId = failsafe.bindId
+    local myId = failsafe.bindId
     for _, c in ipairs(failsafe.conns) do
         c:Disconnect()
     end
     table.clear(failsafe.conns)
     failsafe.armed = true
 
-    humanoid = character:WaitForChild("Humanoid", 10)
+    local humanoid = character:WaitForChild("Humanoid", 10)
     if not humanoid or failsafe.bindId ~= myId then return end
 
     table.insert(failsafe.conns, humanoid.HealthChanged:Connect(function(health)
@@ -2048,17 +2048,20 @@ end
 -- Polls every frame while health is changing. If nothing changes for
 -- HEALTH_STALE_TIME seconds it stops polling and just waits for a change event.
 function attachHealthBar(entry, fill, pctLabel)
-    destroyed = false
-    tracking = false
-    heartbeatConn = nil
-    watchConns = {}
-    lastHealth, lastMax, lastHum = nil, nil, nil
-    lastChange = os.clock()
+    -- everything here is local on purpose: every row in the menu calls this, and shared globals made
+    -- all rows drive the LAST row's bar (and leaked their Heartbeat connections)
+    local destroyed = false
+    local tracking = false
+    local heartbeatConn = nil
+    local watchConns = {}
+    local lastHealth, lastMax, lastHum = nil, nil, nil
+    local lastChange = os.clock()
+    local render, sample, stopTracking, startTracking, wake, bind, clearWatch, playerConns
 
     function render(hum)
-        frac, color = nil, nil
-        health = hum and hum.Health or 0
-        maxHealth = hum and hum.MaxHealth or 0
+        local frac, color
+        local health = hum and hum.Health or 0
+        local maxHealth = hum and hum.MaxHealth or 0
         if not hum or health ~= health or health <= 0 or maxHealth <= 0 then
             frac, color = 1, HEALTH_DEAD
         else
@@ -2085,9 +2088,9 @@ function attachHealthBar(entry, fill, pctLabel)
 
     -- returns true if anything changed since the last sample
     function sample()
-        hum = getEntryHumanoid(entry)
-        health = hum and hum.Health or -1
-        maxHealth = hum and hum.MaxHealth or -1
+        local hum = getEntryHumanoid(entry)
+        local health = hum and hum.Health or -1
+        local maxHealth = hum and hum.MaxHealth or -1
         if hum == lastHum and health == lastHealth and maxHealth == lastMax then
             return false
         end
@@ -2128,7 +2131,6 @@ function attachHealthBar(entry, fill, pctLabel)
         startTracking()
     end
 
-    bind = nil
     function clearWatch()
         for _, c in ipairs(watchConns) do
             c:Disconnect()
@@ -2138,7 +2140,7 @@ function attachHealthBar(entry, fill, pctLabel)
 
     bind = function()
         clearWatch()
-        hum, model = getEntryHumanoid(entry)
+        local hum, model = getEntryHumanoid(entry)
         if hum then
             table.insert(watchConns, hum.HealthChanged:Connect(wake))
             table.insert(watchConns, hum:GetPropertyChangedSignal("MaxHealth"):Connect(wake))
@@ -2466,7 +2468,7 @@ function openTargetMenu()
         for index, entry in ipairs(targets) do
             row = makeRow(index, "Target_" .. entry.name)
 
-            avatar = Instance.new("ImageLabel")
+            local avatar = Instance.new("ImageLabel")
             avatar.Name = "Avatar"
             avatar.BackgroundColor3 = Color3.fromRGB(14, 18, 16)
             avatar.BorderSizePixel = 0
@@ -2555,7 +2557,7 @@ function openTargetMenu()
 
             if entry.userId then
                 task.spawn(function()
-                    ok, image = pcall(function()
+                    local ok, image = pcall(function()
                         return Players:GetUserThumbnailAsync(entry.userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
                     end)
                     if ok and avatar.Parent then
@@ -3820,7 +3822,14 @@ if CFG.AutoPlay then
 		local remaining = CFG.SpawnDelay - (os.clock() - spawnTime)
 		if remaining > 0 then task.wait(remaining) end
 		while S.running and os.clock() - t0 < 8 do task.wait() end
-		if lp.Character == char then play() end
+		if lp.Character == char then
+			-- if setup ever errors halfway, don't leave the sequence marked "running" (that would block every later respawn)
+			local ok, err = pcall(play)
+			if not ok then
+				warn("[RickRegen] " .. tostring(err))
+				S.running = false
+			end
+		end
 	end
 
 	if _G.__RickRegenSpawnConn then
@@ -3862,6 +3871,9 @@ _G.RickPortal = {
             _G.__RickRegenSpawnConn = nil
         end
         voidConn:Disconnect()
+        pcall(function()
+            RunService:UnbindFromRenderStep("RickDodgeCameraLock")
+        end)
         if miniCleanup then
             miniCleanup()
             miniCleanup = nil
