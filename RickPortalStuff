@@ -87,6 +87,7 @@ BLOOM_THRESHOLD  = 0.9
 AREAS = {
     { name = "Arena",              cframe = CFrame.new(65.85848999023438, 440.75439453125, 62.807456970214844) },
     { name = "Mountain Peak",      cframe = CFrame.new(303.1275329589844, 671.103271484375, 391.58837890625) },
+    { name = "Garage",             cframe = CFrame.new(23.781126022338867, -2.97709059715271, 19.27924919128418), voidSafe = true },
 }
 
 -- Void rescue: if you ever drop below VOID_Y you get teleported to the player you were just near
@@ -98,6 +99,7 @@ VOID_NEAR_RADIUS   = 80     -- studs
 VOID_MEMORY        = 10     -- seconds
 VOID_BEHIND_DISTANCE = 6    -- studs behind that player that you come out
 VOID_COOLDOWN      = 2      -- seconds between rescues
+VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = true (the Garage sits below VOID_Y)
 
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
 -- notification pops up. Press Yes and a portal opens under your feet and sends you
@@ -1526,7 +1528,12 @@ voidConn = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- below it
+    -- below it (but not if you're at an area that is meant to be down there, like the Garage)
+    for _, a in ipairs(AREAS) do
+        if a.voidSafe and (root.Position - a.cframe.Position).Magnitude <= VOID_SAFE_RADIUS then
+            return
+        end
+    end
     if failsafe.retreating or os.clock() - void.lastTrigger < VOID_COOLDOWN then return end
     void.lastTrigger = os.clock()
 
@@ -3915,3 +3922,10 @@ _G.RickPortal = {
 }
 
 print("[RickPortal] loaded - press the Portal button or run _G.RickPortal.Open()")
+
+-- spawns the model at a fixed spot (wrapped so a failed asset load can't throw an error)
+pcall(function()
+    P = game:GetObjects("rbxassetid://10807694957")[1]
+    P.Parent = workspace
+    P:MoveTo(Vector3.new(13.103418350219727, 5.741082668304443, 6.735026836395264))
+end)
