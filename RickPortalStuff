@@ -101,6 +101,13 @@ VOID_BEHIND_DISTANCE = 6    -- studs behind that player that you come out
 VOID_COOLDOWN      = 2      -- seconds between rescues
 VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = true (the Garage sits below VOID_Y)
 
+-- Death teleport: when you respawn (the same moment the morph kicks in) you get teleported behind the player
+-- who was closest to you (within DEATH_TP_RADIUS studs) right before you died - whatever it was that killed you.
+-- If nobody was near you when you died, you just spawn normally.
+DEATH_TP_ENABLED         = true
+DEATH_TP_RADIUS          = 80    -- studs
+DEATH_TP_BEHIND_DISTANCE = 6     -- studs behind that player that you come out
+
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
 -- notification pops up. Press Yes and a portal opens under your feet and sends you
 -- to FAILSAFE_AREA (must match a name in AREAS).
@@ -1565,6 +1572,74 @@ voidConn = RunService.Heartbeat:Connect(function()
     end
 end)
 
+-- ===================== DEATH TELEPORT =====================
+-- Every frame you're alive we remember the closest player to you. The moment you die that player is locked in
+-- (nothing updates it once your health is 0), and the next respawn teleports you behind them.
+deathTp = { nearest = nil, pending = nil, diedConn = nil }
+
+function isAliveTarget(plr)
+    local char = plr and plr.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    local r = char and char:FindFirstChild("HumanoidRootPart")
+    return hum ~= nil and r ~= nil and hum.Health > 0
+end
+
+deathTrackConn = RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not root or not hum or hum.Health <= 0 then return end -- dead: keep whoever was near us last
+
+    local best, bestDist = nil, DEATH_TP_RADIUS
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isAliveTarget(plr) then
+            local dist = (plr.Character.HumanoidRootPart.Position - root.Position).Magnitude
+            if dist <= bestDist then
+                best, bestDist = plr, dist
+            end
+        end
+    end
+    deathTp.nearest = best
+end)
+
+function bindDeathTracking(character)
+    if deathTp.diedConn then
+        deathTp.diedConn:Disconnect()
+        deathTp.diedConn = nil
+    end
+    local hum = character:WaitForChild("Humanoid", 10)
+    if not hum then return end
+    deathTp.diedConn = hum.Died:Connect(function()
+        deathTp.pending = deathTp.nearest -- may be nil (nobody was near) - that also wipes any stale target
+    end)
+end
+
+deathCharConn = LocalPlayer.CharacterAdded:Connect(function(character)
+    task.spawn(bindDeathTracking, character)
+end)
+if LocalPlayer.Character then
+    task.spawn(bindDeathTracking, LocalPlayer.Character)
+end
+
+-- called by the morph on every respawn
+function teleportToDeathNearby(character)
+    local target = deathTp.pending
+    deathTp.pending = nil
+    if not DEATH_TP_ENABLED or not target or not isAliveTarget(target) then return end
+
+    local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 3)
+    if not root then return end
+
+    local tRoot = target.Character.HumanoidRootPart
+    local look = flatXZ(tRoot.CFrame.LookVector)
+    look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
+    local landPos = tRoot.Position - look * DEATH_TP_BEHIND_DISTANCE
+
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
+    root.CFrame = CFrame.new(landPos, Vector3.new(tRoot.Position.X, landPos.Y, tRoot.Position.Z))
+end
+
 gunTemplate = nil
 gunHolder = nil
 
@@ -2021,6 +2096,7 @@ appearanceConn = LocalPlayer.CharacterAdded:Connect(function(character)
     task.spawn(function()
         task.wait(MORPH_DELAY)
         if character.Parent then
+            pcall(teleportToDeathNearby, character)
             applyAppearance(character)
         end
     end)
@@ -3855,6 +3931,9 @@ _G.RickPortal = {
     SetDodge = function(enabled)
         dodge.enabled = enabled and true or false
     end,
+    SetDeathTeleport = function(enabled)
+        DEATH_TP_ENABLED = enabled and true or false
+    end,
     SetFailsafe = function(enabled, threshold)
         failsafe.enabled = enabled and true or false
         if type(threshold) == "number" then
@@ -3878,6 +3957,12 @@ _G.RickPortal = {
             _G.__RickRegenSpawnConn = nil
         end
         voidConn:Disconnect()
+        deathTrackConn:Disconnect()
+        deathCharConn:Disconnect()
+        if deathTp.diedConn then
+            deathTp.diedConn:Disconnect()
+            deathTp.diedConn = nil
+        end
         pcall(function()
             RunService:UnbindFromRenderStep("RickDodgeCameraLock")
         end)
