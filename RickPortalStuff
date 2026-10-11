@@ -106,6 +106,7 @@ VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = t
 -- after the 0.4s respawn delay the corpse regenerates into you, right where you died.
 DEATH_TP_ENABLED         = true
 DEATH_TP_DELAY           = 0.2   -- extra seconds you wait after respawning before you get sent back to where you died
+MORPH_DELAY              = 0.3   -- everything that used to run the instant you respawn now waits this long (same moment as the morph)
 
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
 -- notification pops up. Press Yes and a portal opens under your feet and sends you
@@ -153,7 +154,6 @@ DODGE_FACING_NEAR     = 0.1    -- how much they must face you at point-blank ran
 DODGE_FACING_FAR      = 0.85   -- how much they must face you at max range (dot: "properly facing")
 DODGE_BEHIND_DISTANCE = 8      -- studs behind them that you land
 BEHIND_BUTTON_DISTANCE = 6     -- studs behind the nearest enemy that the blue mini button lands you
-BEHIND_ALREADY_DOT     = -0.5  -- if you're already this far behind them (dot: -1 = dead behind, 0 = their side), the button does nothing
 BEHIND_BUTTON_COOLDOWN = 5     -- seconds between presses of the blue mini button
 BEHIND_CLICK_METHOD    = "keypress"  -- how the blue button left-clicks: "keypress" (keypress(0x01) = VK_LBUTTON) or "vim" (VirtualInputManager)
 BEHIND_BUTTON_COLOR    = Color3.fromRGB(70, 150, 255)  -- blue (the retreat mini button is green)
@@ -1210,7 +1210,11 @@ function bindFailsafe(character)
 end
 
 failsafeCharConn = LocalPlayer.CharacterAdded:Connect(function(character)
-    task.spawn(bindFailsafe, character)
+    task.delay(MORPH_DELAY, function()
+        if character.Parent then
+            bindFailsafe(character)
+        end
+    end)
 end)
 if LocalPlayer.Character then
     task.spawn(bindFailsafe, LocalPlayer.Character)
@@ -1499,8 +1503,10 @@ end
 dodgeStreak = { target = nil, count = 0 }
 
 streakResetConn = LocalPlayer.CharacterAdded:Connect(function()
-    dodgeStreak.target = nil
-    dodgeStreak.count = 0
+    task.delay(MORPH_DELAY, function()
+        dodgeStreak.target = nil
+        dodgeStreak.count = 0
+    end)
 end)
 
 function isDodgeBlockedByAnimation(character, humanoid, animator)
@@ -1665,7 +1671,11 @@ function bindDeathTracking(character)
 end
 
 deathCharConn = LocalPlayer.CharacterAdded:Connect(function(character)
-    task.spawn(bindDeathTracking, character)
+    task.delay(MORPH_DELAY, function()
+        if character.Parent then
+            bindDeathTracking(character)
+        end
+    end)
 end)
 if LocalPlayer.Character then
     task.spawn(bindDeathTracking, LocalPlayer.Character)
@@ -1776,7 +1786,11 @@ function attachGun(character)
 end
 
 characterConn = LocalPlayer.CharacterAdded:Connect(function(character)
-    attachGun(character)
+    task.delay(MORPH_DELAY, function()
+        if character.Parent then
+            attachGun(character)
+        end
+    end)
 end)
 
 if LocalPlayer.Character then
@@ -2108,18 +2122,6 @@ function leftClick()
     end
 end
 
--- true if you're already standing behind that enemy (inside the cone behind their back)
-function isAlreadyBehind(enemyChar)
-    local character = LocalPlayer.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local aRoot = enemyChar and enemyChar:FindFirstChild("HumanoidRootPart")
-    if not root or not aRoot then return false end
-    local toMe = flatXZ(root.Position - aRoot.Position)
-    local look = flatXZ(aRoot.CFrame.LookVector)
-    if toMe.Magnitude < 0.01 or look.Magnitude < 0.01 then return false end
-    return look.Unit:Dot(toMe.Unit) <= BEHIND_ALREADY_DOT
-end
-
 function buildMiniBehindButton(parent)
     local behindBtn = Instance.new("ImageButton")
     behindBtn.Name = "MiniBehind"
@@ -2192,7 +2194,7 @@ function buildMiniBehindButton(parent)
     local behindConn = behindBtn.Activated:Connect(function()
         if os.clock() < cooldownEnd or failsafe.retreating then return end
         local enemyChar = nearestEnemyChar()
-        if not enemyChar or isAlreadyBehind(enemyChar) then return end
+        if not enemyChar then return end
         -- playVoice = false, playStreakVoice = false -> only EXIT_SOUND plays
         if teleportBehind(enemyChar, false, false, BEHIND_BUTTON_DISTANCE) then
             startCooldown()
@@ -2279,8 +2281,6 @@ function applyAppearance(character)
         fakeHead:ClearAllChildren()
     end
 end
-
-MORPH_DELAY = 0.3
 
 appearanceConn = LocalPlayer.CharacterAdded:Connect(function(character)
     task.spawn(function()
@@ -2662,7 +2662,7 @@ function openTargetMenu()
     hoverInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
     function makeRow(index, key)
-        row = Instance.new("TextButton")
+        local row = Instance.new("TextButton")
         row.Name = key
         row.LayoutOrder = index
         row.AutoButtonColor = false
@@ -2672,11 +2672,11 @@ function openTargetMenu()
         row.Size = UDim2.new(1, 0, 0, rowPx)
         row.Parent = list
 
-        rowCorner = Instance.new("UICorner")
+        local rowCorner = Instance.new("UICorner")
         rowCorner.CornerRadius = UDim.new(0, 12)
         rowCorner.Parent = row
 
-        rowStroke = Instance.new("UIStroke")
+        local rowStroke = Instance.new("UIStroke")
         rowStroke.Color = accent
         rowStroke.Transparency = 1
         rowStroke.Thickness = 1.5
@@ -4240,9 +4240,14 @@ if CFG.AutoPlay then
 			hideConn = hideModel(char, rec)
 		end
 
-		task.spawn(bindDeath, char)
+		-- the hide above stays instant (otherwise you'd see your new body); everything else waits for the morph
+		task.delay(MORPH_DELAY, function()
+			if char.Parent then bindDeath(char) end
+		end)
 		char:WaitForChild("Humanoid", 10)
 		char:WaitForChild("HumanoidRootPart", 10)
+		local morphLeft = MORPH_DELAY - (os.clock() - spawnTime)
+		if morphLeft > 0 then task.wait(morphLeft) end
 
 		local bound = false
 		if session then
