@@ -3173,7 +3173,7 @@ local function puddle(pos, scale)
 end
 
 local function spawnDrop(pos, vel)
-	local s = rr(0.12, 0.34)
+	local s = rr(0.12, 0.46)
 	local col = CFG.BloodColor:Lerp(Color3.fromRGB(190, 15, 25), rr(0, 0.6))
 	local p = newPart(S.folder, Vector3.new(s, s, s), col)
 	p.CFrame = CFrame.new(pos)
@@ -3242,19 +3242,33 @@ local function makeStump(parent, piece, localCF, size)
 	local bone = newPart(parent, Vector3.new(0.6, 0.32, 0.32), Color3.fromRGB(238, 228, 208), Enum.PartType.Cylinder)
 	bone.Name = "Bone"
 	bone.Transparency = 1
-	return { piece = piece, localCF = localCF, cap = cap, bone = bone, em = makeEmitter(cap), acc = 0, shown = false }
+	-- jagged splinters sticking out of the broken bone
+	local shards = {}
+	for _ = 1, 3 do
+		local sp = newPart(parent, Vector3.new(0.09, 0.09, rr(0.3, 0.65)), Color3.fromRGB(232, 220, 196):Lerp(CFG.BloodColor, rr(0, 0.35)))
+		sp.Transparency = 1
+		shards[#shards + 1] = {
+			part = sp,
+			cf = CFrame.new(rr(-0.26, 0.26), rr(0.12, 0.4), rr(-0.26, 0.26)) * CFrame.Angles(PI / 2 + rr(-0.55, 0.55), rr(0, PI * 2), rr(-0.55, 0.55)),
+		}
+	end
+	return { piece = piece, localCF = localCF, cap = cap, bone = bone, shards = shards, em = makeEmitter(cap), acc = 0, shown = false }
 end
 
 local function updateStump(s)
 	local base = s.piece.disp * s.localCF
 	s.cap.CFrame = base * CFrame.new(0, 0.04, 0)
 	s.bone.CFrame = base * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, PI / 2)
+	for _, sh in ipairs(s.shards) do
+		sh.part.CFrame = base * sh.cf
+	end
 end
 
 local function showStump(s, on)
 	local t = on and 0 or 1
 	s.cap.Transparency = t
 	s.bone.Transparency = t
+	for _, sh in ipairs(s.shards) do sh.part.Transparency = t end
 	s.shown = on
 end
 
@@ -3399,8 +3413,8 @@ local function onImpact(p, impact, pos, gy)
 	p.lastImpact = now
 	S.trauma = math.min(1, S.trauma + 0.10 * clamp01(impact / 45))
 	puddle(Vector3.new(pos.X, gy, pos.Z), 1.1)
-	for _ = 1, 6 do
-		spawnDrop(pos, Vector3.new(rr(-14, 14), rr(8, 24), rr(-14, 14)))
+	for _ = 1, 11 do
+		spawnDrop(pos, Vector3.new(rr(-16, 16), rr(8, 26), rr(-16, 16)))
 	end
 end
 
@@ -3470,6 +3484,176 @@ local function simulate(p, dt)
 		p.still = 0
 	end
 	p.cf = cf
+end
+
+------------------------------------------------------------------ GIBS (meat + bone chunks)
+local gibs = {}
+local FLESH = {
+	Color3.fromRGB(122, 8, 16), Color3.fromRGB(150, 22, 30), Color3.fromRGB(196, 78, 84),
+	Color3.fromRGB(88, 4, 10), Color3.fromRGB(214, 176, 120),
+}
+local BONE_COL = Color3.fromRGB(236, 226, 204)
+
+local function spawnGib(pos, vel, bone)
+	if #gibs >= 80 then return end
+	local k = bone and rr(0.12, 0.2) or rr(0.28, 0.7)
+	local size = bone and Vector3.new(k, k, rr(0.5, 1.1)) or Vector3.new(k * rr(0.8, 1.4), k * rr(0.6, 1), k * rr(0.8, 1.4))
+	local col = bone and BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.4)) or FLESH[rng:NextInteger(1, #FLESH)]
+	local p = newPart(S.folder, size, col)
+	p.Reflectance = bone and 0 or 0.12
+	local cf = CFrame.new(pos) * CFrame.Angles(rr(0, PI * 2), rr(0, PI * 2), rr(0, PI * 2))
+	p.CFrame = cf
+	gibs[#gibs + 1] = {
+		p = p, size = size, cf = cf, vel = vel, bone = bone, trail = 0, rest = false,
+		av = Vector3.new(rr(-1, 1), rr(-1, 1), rr(-1, 1)) * rr(6, 16),
+	}
+end
+
+-- sucking = true while the body is pulling itself back together: loose chunks get dragged into the torso
+local function stepGibs(dt, suckPos, sucking)
+	local i = 1
+	while i <= #gibs do
+		local g = gibs[i]
+		local remove = false
+		local pulled = sucking and suckPos ~= nil
+		if pulled then
+			g.wait = (g.wait or rr(0, 0.9)) - dt
+			if g.wait > 0 then pulled = false end
+		end
+		if pulled then
+			g.drain = (g.drain or 0) + dt
+			local to = suckPos - g.cf.Position
+			local dist = to.Magnitude
+			if dist < 1.2 or g.drain > 1.8 then
+				remove = true
+			else
+				local rot = g.cf - g.cf.Position
+				g.cf = CFrame.new(g.cf.Position + to.Unit * math.min(dist, (14 + g.drain * 45) * dt))
+					* CFrame.fromAxisAngle(Vector3.yAxis, dt * 9) * rot
+				g.p.Size = g.size * math.max(0.25, clamp01(dist / 4))
+				g.p.CFrame = g.cf
+			end
+		elseif not g.rest then
+			g.vel = g.vel + Vector3.new(0, -CFG.Gravity * dt, 0)
+			local pos = g.cf.Position + g.vel * dt
+			local rot = g.cf - g.cf.Position
+			local w = g.av.Magnitude
+			if w > 1e-3 then rot = CFrame.fromAxisAngle(g.av / w, w * dt) * rot end
+			g.trail = g.trail + dt
+			if g.trail > 0.045 and not g.bone and g.vel.Magnitude > 6 then
+				g.trail = 0 -- meat leaves a blood trail while it flies
+				spawnDrop(pos, g.vel * 0.15 + Vector3.new(rr(-2, 2), rr(0, 3), rr(-2, 2)))
+			end
+			local gy = S.groundY + g.size.Y * 0.4
+			if pos.Y <= gy then
+				pos = Vector3.new(pos.X, gy, pos.Z)
+				if g.vel.Y < -4 then
+					puddle(Vector3.new(pos.X, S.groundY, pos.Z), 1.0)
+					for _ = 1, 5 do
+						spawnDrop(pos, Vector3.new(rr(-9, 9), rr(4, 14), rr(-9, 9)))
+					end
+					g.vel = Vector3.new(g.vel.X * 0.55, -g.vel.Y * 0.28, g.vel.Z * 0.55)
+					g.av = g.av * 0.5
+				else
+					g.vel, g.av, g.rest = Vector3.zero, Vector3.zero, true
+				end
+			end
+			g.cf = CFrame.new(pos) * rot
+			g.p.CFrame = g.cf
+		end
+		local fade = clamp01((os.clock() - S.fadeAt) / 1.4)
+		if fade > 0 then g.p.Transparency = fade end
+		if fade >= 1 then remove = true end
+		if remove then
+			g.p:Destroy()
+			table.remove(gibs, i)
+		else
+			i = i + 1
+		end
+	end
+end
+
+------------------------------------------------------------------ EXPOSED RIBCAGE + ORGANS
+-- Everything is stored in torso-local space and follows the torso piece. -Z is the torso's front face.
+local function buildChest(parent)
+	local chest = { items = {}, shown = false }
+	local function add(size, cf, color, shape, refl)
+		local p = newPart(parent, size, color, shape)
+		p.Transparency = 1
+		if refl then p.Reflectance = refl end
+		chest.items[#chest.items + 1] = { part = p, cf = cf }
+		return p
+	end
+	local function bar(a, b, th)
+		local col = BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.5)) -- some ribs are soaked in blood
+		add(Vector3.new((b - a).Magnitude + 0.03, th, th),
+			CFrame.lookAt((a + b) * 0.5, b) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder)
+	end
+
+	-- the open wound + torn flesh around its edge
+	add(Vector3.new(1.6, 1.75, 0.12), CFrame.new(0, 0.02, -0.5), Color3.fromRGB(92, 4, 10), nil, 0.22)
+	for i = 1, 16 do
+		local ang = (i / 16) * PI * 2
+		local sz = rr(0.18, 0.42)
+		add(Vector3.new(sz, sz * rr(0.5, 1), sz * rr(0.5, 1)),
+			CFrame.new(math.cos(ang) * 0.86, 0.02 + math.sin(ang) * 0.93, -0.54) * CFrame.Angles(rr(-0.5, 0.5), rr(-0.5, 0.5), rr(0, PI)),
+			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
+	end
+
+	-- organs behind the ribs
+	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(0.43, 0.28, -0.58), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15) -- lungs
+	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(-0.43, 0.28, -0.58), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.78, 0.4, 0.4), CFrame.new(0.3, -0.5, -0.58), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)  -- liver
+	for k = 1, 7 do -- intestines
+		add(Vector3.new(0.32, 0.3, 0.3), CFrame.new(-0.55 + k * 0.18, -0.72 + math.sin(k * 1.7) * 0.08, -0.58),
+			Color3.fromRGB(206, 108, 118), Enum.PartType.Ball, 0.2)
+	end
+	local heartP = newPart(parent, Vector3.new(0.42, 0.52, 0.38), Color3.fromRGB(176, 12, 26), Enum.PartType.Ball)
+	heartP.Transparency = 1
+	heartP.Reflectance = 0.28
+	chest.heart = { part = heartP, cf = CFrame.new(-0.22, 0.12, -0.66), size = heartP.Size }
+
+	-- ribs: six pairs bowing out of the chest and meeting at the sternum (two of them are snapped)
+	local depth = 0.24
+	for i = 1, 6 do
+		local y0 = 0.82 - (i - 1) * 0.2
+		local a = 0.8 - (i - 1) * 0.025
+		local th = 0.09 - (i - 1) * 0.004
+		for side = -1, 1, 2 do
+			local tmax = ((i == 3 and side == 1) or (i == 5 and side == -1)) and 0.62 or 1
+			local prev
+			for seg = 0, 4 do
+				local t = seg / 4 * tmax
+				local pt = Vector3.new(side * a * math.cos(t * PI / 2), y0 - 0.12 * t, -0.5 - depth * math.sin(t * PI / 2))
+				if prev then bar(prev, pt, th) end
+				prev = pt
+			end
+			if tmax < 1 then
+				bar(prev, prev + Vector3.new(side * 0.05, -0.13, -0.09), th * 0.7) -- jagged broken end
+			end
+		end
+	end
+	add(Vector3.new(0.16, 1.3, 0.1), CFrame.new(0, 0.3, -0.5 - depth), BONE_COL, nil)  -- sternum
+	add(Vector3.new(0.1, 0.3, 0.07), CFrame.new(0, -0.45, -0.5 - depth), BONE_COL, nil)
+	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(0.72, 1.0, -0.56), 0.08)         -- collar bones
+	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(-0.72, 1.0, -0.56), 0.08)
+	return chest
+end
+
+local function showChest(chest, on)
+	for _, it in ipairs(chest.items) do it.part.Transparency = on and 0 or 1 end
+	chest.heart.part.Transparency = on and 0 or 1
+	chest.shown = on
+end
+
+local function updateChest(chest, torsoCF, beat)
+	if not chest.shown then return end
+	for _, it in ipairs(chest.items) do
+		it.part.CFrame = torsoCF * it.cf
+	end
+	local h = chest.heart
+	h.part.Size = h.size * (1 + 0.28 * math.min(beat, 1.2)) -- the heart is visibly beating
+	h.part.CFrame = torsoCF * h.cf
 end
 
 ------------------------------------------------------------------ SFX
@@ -3604,6 +3788,7 @@ local function play(deathMode, deadChar)
 	S.trauma, S.flash, S.fov, S.zoom, S.beatPhase = 0, 0, 0, 0, 0
 	table.clear(fx)
 	table.clear(drops)
+	table.clear(gibs)
 
 	local folder = Instance.new("Folder")
 	folder.Name = "RickRegenFX"
@@ -3709,6 +3894,8 @@ local function play(deathMode, deadChar)
 		for _, v in ipairs(p.veins) do veins[#veins + 1] = v end
 	end
 
+	local chest = buildChest(folder)
+
 	-- hide + freeze the real character -------------------------
 	local hidden, hideConn = {}, nil
 	local saved = { ws = 16, jp = 50, jh = 7.2, auto = true, anch = false }
@@ -3769,6 +3956,7 @@ local function play(deathMode, deadChar)
 	local burstDone, finished, restored = false, false, false
 	local pre, heat, beat, redAmt = 0, 0, 0, 0
 	local bindName = "RickRegen_" .. tostring(os.clock())
+	local poolT, chestAcc, suckGibs = 0, 0, false
 
 	local function restoreChar()
 		if restored then return end
@@ -3797,6 +3985,7 @@ local function play(deathMode, deadChar)
 		folder:Destroy()
 		table.clear(fx)
 		table.clear(drops)
+		table.clear(gibs)
 		local c = workspace.CurrentCamera
 		if c then c.FieldOfView = baseFov end
 		S.corpse = nil
@@ -3829,12 +4018,34 @@ local function play(deathMode, deadChar)
 		for _, s in ipairs(stumps) do
 			showStump(s, true)
 			updateStump(s)
-			s.em:Emit(34)
+			s.em:Emit(60)
 			local base = s.piece.disp * s.localCF
 			local n = base.UpVector
-			for _ = 1, 9 do
-				spawnDrop(base.Position, n * rr(16, 40) + Vector3.new(rr(-9, 9), rr(0, 12), rr(-9, 9)))
+			for _ = 1, 22 do
+				spawnDrop(base.Position, n * rr(16, 44) + Vector3.new(rr(-10, 10), rr(0, 14), rr(-10, 10)))
 			end
+		end
+		-- chest blown open: ribcage + organs revealed, meat and bone fly out
+		showChest(chest, true)
+		updateChest(chest, torsoP.disp, 0)
+		local tcf = torsoP.cf
+		local cpos = (tcf * CFrame.new(0, 0.1, -0.6)).Position
+		for _ = 1, 34 do
+			spawnDrop(cpos, tcf.LookVector * rr(10, 36) + Vector3.new(rr(-9, 9), rr(-2, 12), rr(-9, 9)))
+		end
+		for _ = 1, 9 do
+			spawnGib(cpos, tcf.LookVector * rr(6, 20) + Vector3.new(rr(-8, 8), rr(6, 18), rr(-8, 8)), false)
+		end
+		for _ = 1, 7 do
+			spawnGib(cpos, tcf.LookVector * rr(6, 18) + Vector3.new(rr(-8, 8), rr(6, 16), rr(-8, 8)), true)
+		end
+		for _, lp in ipairs(limbs) do
+			local lb = lp.cf * lp.spec.stump
+			local ln = lb.UpVector
+			for _ = 1, 3 do
+				spawnGib(lb.Position, ln * rr(8, 22) + Vector3.new(rr(-7, 7), rr(2, 12), rr(-7, 7)), false)
+			end
+			spawnGib(lb.Position, ln * rr(8, 18) + Vector3.new(rr(-5, 5), rr(2, 10), rr(-5, 5)), true)
 		end
 		for _, v in ipairs(veins) do
 			setMode(v, (v.kind == "L") and "tether" or "dangle", clock)
@@ -3845,6 +4056,7 @@ local function play(deathMode, deadChar)
 	local function startPull(p)
 		if not slamPlayed then
 			slamPlayed = true
+			suckGibs = true
 			if S.sfxId then playTagged(SLAM_TAG, { id = S.sfxId, volume = SLAM_VOLUME }) end
 		end
 		p.state = "pull"
@@ -3880,10 +4092,18 @@ local function play(deathMode, deadChar)
 		S.flash, S.trauma = 1, 1
 		S.fov = S.fov + 12
 		local c = torsoP.real.Position
-		for _ = 1, 46 do
+		for _ = 1, 90 do
 			local a = rr(0, PI * 2)
-			local sp = rr(8, 30)
-			spawnDrop(c, Vector3.new(math.cos(a) * sp, rr(6, 26), math.sin(a) * sp))
+			local sp = rr(8, 32)
+			spawnDrop(c, Vector3.new(math.cos(a) * sp, rr(6, 28), math.sin(a) * sp))
+		end
+		-- the chest seals up: ribcage and organs burst out as the flesh closes over them
+		suckGibs = false
+		showChest(chest, false)
+		for k = 1, 18 do
+			local a = rr(0, PI * 2)
+			local sp = rr(7, 20)
+			spawnGib(c, Vector3.new(math.cos(a) * sp, rr(8, 20), math.sin(a) * sp), k > 10)
 		end
 		restoreChar()
 		pcall(function() -- your body is back: play the finish animation right now, slowed down
@@ -4057,6 +4277,8 @@ local function play(deathMode, deadChar)
 				end
 			end
 
+			updateChest(chest, torsoP.disp, beat)
+
 			-- stumps (cut faces, mist, droplet spray)
 			if burstDone then
 				local spray = math.exp(-(rawClock - CFG.T_Burst) * 1.35)
@@ -4072,6 +4294,28 @@ local function play(deathMode, deadChar)
 							spawnDrop(base.Position + n * 0.2,
 								n * rr(10, 26) + Vector3.new(rr(-6, 6), rr(0, 8), rr(-6, 6)))
 						end
+						-- thick drips keep running long after the spray has died down
+						s.drip = (s.drip or 0) + sdt * 5
+						while s.drip >= 1 do
+							s.drip = s.drip - 1
+							local base = s.piece.disp * s.localCF
+							spawnDrop(base.Position + base.UpVector * 0.1,
+								base.UpVector * rr(0.5, 3) + Vector3.new(rr(-1.2, 1.2), 0, rr(-1.2, 1.2)))
+						end
+					end
+				end
+				-- blood pools under the torso while it lies there, and the open chest keeps bleeding
+				poolT = poolT - sdt
+				if poolT <= 0 and (torsoP.state == "phys" or torsoP.state == "rest") then
+					poolT = 0.22
+					puddle(Vector3.new(torsoP.cf.Position.X, S.groundY, torsoP.cf.Position.Z), 1.0)
+				end
+				if chest.shown then
+					chestAcc = chestAcc + sdt * 7
+					while chestAcc >= 1 do
+						chestAcc = chestAcc - 1
+						local cp = (torsoP.disp * CFrame.new(rr(-0.5, 0.5), rr(-0.4, 0.5), -0.65)).Position
+						spawnDrop(cp, torsoP.disp.LookVector * rr(0.5, 3) + Vector3.new(rr(-1, 1), rr(0, 2), rr(-1, 1)))
 					end
 				end
 			end
@@ -4125,9 +4369,10 @@ local function play(deathMode, deadChar)
 		end
 
 		stepDrops(sdt)
+		stepGibs(sdt, torsoP.real.Position, suckGibs)
 		runFx(sdt)
 
-		if finished and #fx == 0 and #drops == 0 and S.flash < 0.02 and S.trauma < 0.02 and redAmt < 0.02 then
+		if finished and #fx == 0 and #drops == 0 and #gibs == 0 and S.flash < 0.02 and S.trauma < 0.02 and redAmt < 0.02 then
 			fullCleanup()
 		end
 	end
