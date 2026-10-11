@@ -3130,23 +3130,6 @@ local function runFx(dt)
 end
 
 ------------------------------------------------------------------ BLOOD / IMPACT FX
-local function ring(pos, color, size, life, thick)
-	local p = newPart(S.folder, Vector3.new(thick, 2, 2), color, Enum.PartType.Cylinder, Enum.Material.Neon)
-	local age = 0
-	addFx(function(dt)
-		age = age + dt
-		local a = clamp01(age / life)
-		local d = lerp(2, size, Ease.outQuint(a))
-		p.Size = Vector3.new(thick, d, d)
-		p.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, PI / 2)
-		p.Transparency = 0.15 + 0.85 * a
-		if a >= 1 then
-			p:Destroy()
-			return true
-		end
-	end)
-end
-
 local function glowBall(pos, color, size, life)
 	local p = newPart(S.folder, Vector3.new(1, 1, 1), color, Enum.PartType.Ball, Enum.Material.Neon)
 	p.Position = pos
@@ -3856,9 +3839,6 @@ local function play(deathMode, deadChar)
 		for _, v in ipairs(veins) do
 			setMode(v, (v.kind == "L") and "tether" or "dangle", clock)
 		end
-		local gp = Vector3.new(torsoP.cf.Position.X, S.groundY, torsoP.cf.Position.Z)
-		ring(gp, Color3.fromRGB(255, 30, 30), 40, 0.45, 0.4)
-		ring(gp, Color3.fromRGB(255, 140, 60), 26, 0.32, 0.25)
 	end
 
 	local slamPlayed = false
@@ -3899,9 +3879,6 @@ local function play(deathMode, deadChar)
 	local function finale()
 		S.flash, S.trauma = 1, 1
 		S.fov = S.fov + 12
-		local gp = Vector3.new(hrp.Position.X, S.groundY, hrp.Position.Z)
-		ring(gp, Color3.fromRGB(255, 40, 40), 46, 0.5, 0.4)
-		ring(gp, Color3.fromRGB(255, 150, 60), 30, 0.38, 0.25)
 		local c = torsoP.real.Position
 		for _ = 1, 46 do
 			local a = rr(0, PI * 2)
