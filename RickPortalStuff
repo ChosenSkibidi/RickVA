@@ -95,6 +95,7 @@ AREAS = {
 -- (within VOID_NEAR_RADIUS studs, seen in the last VOID_MEMORY seconds), or to VOID_FALLBACK_AREA
 -- (a name in AREAS) if you weren't near anyone or that player isn't a valid target any more.
 VOID_Y             = 325.3045349121094
+UPPER_VOID_Y       = 1056.8778076171875
 VOID_FALLBACK_AREA = "Mountain Peak"
 VOID_NEAR_RADIUS   = 80     -- studs
 VOID_MEMORY        = 10     -- seconds
@@ -1582,7 +1583,7 @@ function isValidVoidTarget(plr)
     char = plr and plr.Character
     hum = char and char:FindFirstChildOfClass("Humanoid")
     r = char and char:FindFirstChild("HumanoidRootPart")
-    return hum ~= nil and r ~= nil and hum.Health > 0 and r.Position.Y >= VOID_Y
+    return hum ~= nil and r ~= nil and hum.Health > 0 and r.Position.Y >= VOID_Y and r.Position.Y <= UPPER_VOID_Y
 end
 
 voidConn = RunService.Heartbeat:Connect(function()
@@ -1592,7 +1593,7 @@ voidConn = RunService.Heartbeat:Connect(function()
     if not root or not hum or hum.Health <= 0 then return end
 
     -- above the line: keep track of who you're standing near
-    if root.Position.Y >= VOID_Y then
+    if root.Position.Y >= VOID_Y and root.Position.Y <= UPPER_VOID_Y then
         best, bestDist = nil, VOID_NEAR_RADIUS
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and isValidVoidTarget(plr) then
@@ -3235,40 +3236,85 @@ local function makeEmitter(parent)
 	return e
 end
 
-local function makeStump(parent, piece, localCF, size)
+local function makeStump(parent, piece, localCF, size, limbName)
+	local nm = limbName or piece.name
+	local isSocket = piece.name == "Torso"
+	local isLeg, isArm = nm:find("Leg") ~= nil, nm:find("Arm") ~= nil
+	local noBone = isSocket or nm == "Head" -- sockets use the pelvis / glenoid cup / neck stack instead of a bare stick
+
 	local cap = newPart(parent, size, Color3.fromRGB(132, 8, 18))
 	cap.Name = "Cap"
 	cap.Transparency = 1
-	local bone = newPart(parent, Vector3.new(0.6, 0.32, 0.32), Color3.fromRGB(238, 228, 208), Enum.PartType.Cylinder)
+	-- broken shaft: ivory cortex with a dark marrow core showing through both ends
+	local bone = newPart(parent, Vector3.new(0.55, 0.3, 0.3), Color3.fromRGB(238, 228, 208):Lerp(CFG.BloodColor, rr(0, 0.25)), Enum.PartType.Cylinder)
 	bone.Name = "Bone"
 	bone.Transparency = 1
-	-- jagged splinters sticking out of the broken bone
-	local shards = {}
-	for _ = 1, 3 do
-		local sp = newPart(parent, Vector3.new(0.09, 0.09, rr(0.3, 0.65)), Color3.fromRGB(232, 220, 196):Lerp(CFG.BloodColor, rr(0, 0.35)))
-		sp.Transparency = 1
-		shards[#shards + 1] = {
-			part = sp,
-			cf = CFrame.new(rr(-0.26, 0.26), rr(0.12, 0.4), rr(-0.26, 0.26)) * CFrame.Angles(PI / 2 + rr(-0.55, 0.55), rr(0, PI * 2), rr(-0.55, 0.55)),
-		}
+	local marrow = newPart(parent, Vector3.new(0.59, 0.15, 0.15), Color3.fromRGB(150, 36, 46), Enum.PartType.Cylinder)
+	marrow.Reflectance = 0.2
+	marrow.Transparency = 1
+
+	local shards, extras = {}, {}
+	local function extra(sz, cf, col, shape, refl)
+		local ep = newPart(parent, sz, col, shape)
+		ep.Transparency = 1
+		if refl then ep.Reflectance = refl end
+		extras[#extras + 1] = { part = ep, cf = cf }
 	end
-	return { piece = piece, localCF = localCF, cap = cap, bone = bone, shards = shards, em = makeEmitter(cap), acc = 0, shown = false }
+	if not noBone then
+		-- jagged splinters sticking out of the broken bone
+		for _ = 1, 3 do
+			local sp = newPart(parent, Vector3.new(0.09, 0.09, rr(0.3, 0.65)), Color3.fromRGB(232, 220, 196):Lerp(CFG.BloodColor, rr(0, 0.35)))
+			sp.Transparency = 1
+			shards[#shards + 1] = {
+				part = sp,
+				cf = CFrame.new(rr(-0.26, 0.26), rr(0.12, 0.4), rr(-0.26, 0.26)) * CFrame.Angles(PI / 2 + rr(-0.55, 0.55), rr(0, PI * 2), rr(-0.55, 0.55)),
+			}
+		end
+		-- the joint end of the bone pushed out of the cut: femoral head on a short neck, or humeral head
+		local headCol = Color3.fromRGB(240, 232, 214):Lerp(CFG.BloodColor, rr(0, 0.25))
+		if isLeg then
+			extra(Vector3.new(0.55, 0.55, 0.55), CFrame.new(0.05, 0.68, 0), headCol, Enum.PartType.Ball, 0.1)
+			extra(Vector3.new(0.4, 0.2, 0.2), CFrame.new(0.02, 0.44, 0) * CFrame.Angles(0, 0, PI / 2 + 0.45), headCol, Enum.PartType.Cylinder)
+		elseif isArm then
+			extra(Vector3.new(0.42, 0.42, 0.42), CFrame.new(0.03, 0.54, 0), headCol, Enum.PartType.Ball, 0.1)
+		end
+	elseif isSocket and isArm then
+		-- shoulder socket: a ring of bone around a dark cup (the glenoid)
+		for i = 1, 7 do
+			local ang = i / 7 * PI * 2
+			extra(Vector3.new(0.16, 0.1, 0.14),
+				CFrame.new(math.cos(ang) * 0.3, 0.08, math.sin(ang) * 0.3) * CFrame.Angles(rr(-0.3, 0.3), ang, rr(-0.3, 0.3)),
+				Color3.fromRGB(236, 226, 204):Lerp(CFG.BloodColor, rr(0, 0.35)))
+		end
+		extra(Vector3.new(0.05, 0.5, 0.5), CFrame.new(0, 0.03, 0) * CFrame.Angles(0, 0, PI / 2), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
+	end
+	return {
+		piece = piece, localCF = localCF, cap = cap, bone = bone, marrow = marrow, noBone = noBone,
+		shards = shards, extras = extras, em = makeEmitter(cap), acc = 0, shown = false,
+	}
 end
 
 local function updateStump(s)
 	local base = s.piece.disp * s.localCF
 	s.cap.CFrame = base * CFrame.new(0, 0.04, 0)
-	s.bone.CFrame = base * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, PI / 2)
+	local boneCF = base * CFrame.new(0, 0.3, 0) * CFrame.Angles(0, 0, PI / 2)
+	s.bone.CFrame = boneCF
+	s.marrow.CFrame = boneCF
 	for _, sh in ipairs(s.shards) do
 		sh.part.CFrame = base * sh.cf
+	end
+	for _, ex in ipairs(s.extras) do
+		ex.part.CFrame = base * ex.cf
 	end
 end
 
 local function showStump(s, on)
 	local t = on and 0 or 1
 	s.cap.Transparency = t
-	s.bone.Transparency = t
+	s.bone.Transparency = s.noBone and 1 or t
+	s.marrow.Transparency = s.noBone and 1 or t
 	for _, sh in ipairs(s.shards) do sh.part.Transparency = t end
+	for _, ex in ipairs(s.extras) do ex.part.Transparency = t end
 	s.shown = on
 end
 
@@ -3586,8 +3632,9 @@ local function buildChest(parent)
 	end
 	local function bar(a, b, th)
 		local col = BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.5)) -- some ribs are soaked in blood
+		local up = (math.abs((b - a).Unit.Y) > 0.9) and Vector3.xAxis or Vector3.yAxis
 		add(Vector3.new((b - a).Magnitude + 0.03, th, th),
-			CFrame.lookAt((a + b) * 0.5, b) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder)
+			CFrame.lookAt((a + b) * 0.5, b, up) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder)
 	end
 
 	-- the open wound + torn flesh around its edge
@@ -3637,12 +3684,42 @@ local function buildChest(parent)
 	add(Vector3.new(0.1, 0.3, 0.07), CFrame.new(0, -0.45, -0.5 - depth), BONE_COL, nil)
 	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(0.72, 1.0, -0.56), 0.08)         -- collar bones
 	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(-0.72, 1.0, -0.56), 0.08)
+
+	-- pelvis hanging under the torso: sacrum + coccyx, two flared iliac wings with crests, pubic arch,
+	-- ischial tuberosities, and a bone-ringed hip socket for each leg
+	local function bcol() return BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.35)) end
+	add(Vector3.new(0.5, 0.7, 0.14), CFrame.new(0, -1.08, 0.34) * CFrame.Angles(-0.3, 0, 0), bcol())
+	add(Vector3.new(0.14, 0.34, 0.1), CFrame.new(0, -1.5, 0.45) * CFrame.Angles(-0.45, 0, 0), bcol())
+	add(Vector3.new(0.14, 0.12, 0.1), CFrame.new(0, -1.3, -0.4), bcol()) -- pubic symphysis
+	for side = -1, 1, 2 do
+		add(Vector3.new(0.08, 0.78, 0.72), CFrame.new(side * 1.04, -0.55, 0.03) * CFrame.Angles(0, side * -0.5, side * 0.28), bcol(), nil, 0.05) -- iliac blade
+		bar(Vector3.new(side * 0.9, -0.17, 0.36), Vector3.new(side * 1.18, -0.15, 0.02), 0.1)    -- crest, back half
+		bar(Vector3.new(side * 1.18, -0.15, 0.02), Vector3.new(side * 1.12, -0.2, -0.34), 0.1)   -- crest, front half
+		add(Vector3.new(0.18, 0.18, 0.18), CFrame.new(side * 1.12, -0.2, -0.34), bcol(), Enum.PartType.Ball) -- front hip spine
+		bar(Vector3.new(side * 0.3, -0.9, 0.3), Vector3.new(side * 0.9, -0.55, 0.2), 0.14)      -- sacroiliac joint
+		bar(Vector3.new(side * 0.95, -0.75, 0), Vector3.new(side * 0.55, -1.02, 0), 0.2)         -- blade down to the socket
+		bar(Vector3.new(side * 0.52, -1.05, -0.15), Vector3.new(side * 0.07, -1.3, -0.4), 0.13) -- pubic ramus
+		bar(Vector3.new(side * 0.5, -1.05, 0.12), Vector3.new(side * 0.42, -1.42, 0.22), 0.15)   -- ischium
+		add(Vector3.new(0.2, 0.2, 0.2), CFrame.new(side * 0.42, -1.44, 0.22), bcol(), Enum.PartType.Ball)
+		for k = 1, 8 do -- hip socket rim + dark cup
+			local ang = k / 8 * PI * 2
+			add(Vector3.new(0.15, 0.1, 0.15),
+				CFrame.new(side * 0.5 + math.cos(ang) * 0.3, -1.02, math.sin(ang) * 0.3) * CFrame.Angles(rr(-0.3, 0.3), ang, rr(-0.3, 0.3)), bcol())
+		end
+		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.0, 0) * CFrame.Angles(0, 0, PI / 2), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
+	end
+	for _ = 1, 10 do -- torn flesh hanging off the pelvis
+		local sz = rr(0.16, 0.34)
+		add(Vector3.new(sz, sz * rr(0.5, 1), sz),
+			CFrame.new(rr(-1, 1), rr(-1.4, -1.0), rr(-0.35, 0.35)) * CFrame.Angles(rr(-0.5, 0.5), rr(0, PI), rr(-0.5, 0.5)),
+			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
+	end
 	return chest
 end
 
 local function showChest(chest, on)
 	for _, it in ipairs(chest.items) do it.part.Transparency = on and 0 or 1 end
-	chest.heart.part.Transparency = on and 0 or 1
+	if chest.heart then chest.heart.part.Transparency = on and 0 or 1 end
 	chest.shown = on
 end
 
@@ -3652,8 +3729,100 @@ local function updateChest(chest, torsoCF, beat)
 		it.part.CFrame = torsoCF * it.cf
 	end
 	local h = chest.heart
-	h.part.Size = h.size * (1 + 0.28 * math.min(beat, 1.2)) -- the heart is visibly beating
-	h.part.CFrame = torsoCF * h.cf
+	if h then
+		h.part.Size = h.size * (1 + 0.28 * math.min(beat, 1.2)) -- the heart is visibly beating
+		h.part.CFrame = torsoCF * h.cf
+	end
+end
+
+-- Exposed arm bones: the front of the arm is torn open, humerus + radius + ulna show through and the
+-- forearm bones snap out past the wrist. Stored in arm-local space (arm is 1x2x1, -Z = front).
+local function buildArmBones(parent, k)
+	k = k or 1
+	local arm = { items = {}, shown = false }
+	local function add(size, cf, color, shape, refl)
+		local p = newPart(parent, size, color, shape)
+		p.Transparency = 1
+		if refl then p.Reflectance = refl end
+		arm.items[#arm.items + 1] = { part = p, cf = cf }
+	end
+	local function bone(a, b, th)
+		local dir = (b - a).Unit
+		local up = (math.abs(dir.Y) > 0.9) and Vector3.xAxis or Vector3.yAxis
+		add(Vector3.new((b - a).Magnitude + 0.03, th * k, th * k),
+			CFrame.lookAt((a + b) * 0.5, b, up) * CFrame.Angles(0, PI / 2, 0),
+			BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.5)), Enum.PartType.Cylinder)
+	end
+	local function knob(pos, d)
+		add(Vector3.new(d * k, d * k, d * k), CFrame.new(pos), BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.35)), Enum.PartType.Ball)
+	end
+
+	-- torn-open strip down the front of the arm + ragged flesh around it
+	add(Vector3.new(0.62, 1.75, 0.08), CFrame.new(0, 0, -0.52), Color3.fromRGB(92, 4, 10), nil, 0.22)
+	for i = 1, 12 do
+		local side = (i % 2 == 0) and 1 or -1
+		local y = -0.8 + (i - 1) / 11 * 1.6
+		local sz = rr(0.14, 0.32)
+		add(Vector3.new(sz, sz * rr(0.6, 1.2), sz * rr(0.5, 1)),
+			CFrame.new(side * rr(0.28, 0.36), y, -0.55) * CFrame.Angles(rr(-0.5, 0.5), rr(-0.5, 0.5), rr(0, PI)),
+			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
+	end
+
+	-- humerus (upper arm) with a joint knob at the shoulder end and at the elbow
+	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, 0.0, -0.62), 0.17)
+	knob(Vector3.new(0.02, 0.95, -0.6), 0.27)
+	knob(Vector3.new(0.04, -0.02, -0.62), 0.25)
+	-- radius + ulna (forearm); the radius sticks out past the wrist, the ulna is snapped short
+	bone(Vector3.new(-0.1, -0.06, -0.6), Vector3.new(-0.13, -1.3, -0.62), 0.12)
+	bone(Vector3.new(0.12, -0.06, -0.6), Vector3.new(0.15, -0.78, -0.62), 0.11)
+	bone(Vector3.new(0.15, -0.78, -0.62), Vector3.new(0.2, -0.94, -0.66), 0.07)  -- jagged broken end
+	bone(Vector3.new(-0.13, -1.3, -0.62), Vector3.new(-0.1, -1.4, -0.66), 0.06)
+	return arm
+end
+
+-- Broken neck: a stack of vertebrae with the spinal cord, windpipe and gullet hanging out of a torn flesh ring.
+-- sign = +1 builds it upward out of the torso's neck hole, -1 builds it downward out of the head's cut.
+local function buildNeckBones(parent, sign, baseY, count)
+	local neck = { items = {}, shown = false }
+	local function add(size, cf, color, shape, refl)
+		local p = newPart(parent, size, color, shape)
+		p.Transparency = 1
+		if refl then p.Reflectance = refl end
+		neck.items[#neck.items + 1] = { part = p, cf = cf }
+	end
+	local function tube(a, b, th, col)
+		local dir = (b - a).Unit
+		local up = (math.abs(dir.Y) > 0.9) and Vector3.xAxis or Vector3.yAxis
+		add(Vector3.new((b - a).Magnitude + 0.02, th, th),
+			CFrame.lookAt((a + b) * 0.5, b, up) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder, 0.15)
+	end
+
+	-- ragged flesh ring where the neck was torn
+	for i = 1, 9 do
+		local ang = i / 9 * PI * 2
+		local sz = rr(0.2, 0.4)
+		add(Vector3.new(sz, sz * rr(0.5, 1), sz),
+			CFrame.new(math.cos(ang) * 0.46, baseY + sign * 0.05, math.sin(ang) * 0.34) * CFrame.Angles(rr(-0.5, 0.5), rr(0, PI), rr(-0.5, 0.5)),
+			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
+	end
+
+	-- vertebrae: disc body + side wings + the spike at the back; each one slightly crooked
+	for i = 0, count - 1 do
+		local y = baseY + sign * (0.14 + i * 0.2)
+		local tilt = rr(-0.22, 0.22)
+		local col = BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.45))
+		local base = CFrame.new(rr(-0.04, 0.04) * (i + 1), y, 0.14 + rr(-0.03, 0.03) * (i + 1))
+			* CFrame.Angles(tilt, rr(-0.3, 0.3), tilt)
+		add(Vector3.new(0.15, 0.36, 0.36), base * CFrame.Angles(0, 0, PI / 2), col, Enum.PartType.Cylinder)
+		add(Vector3.new(0.62, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
+		add(Vector3.new(0.08, 0.1, 0.3), base * CFrame.new(0, 0, 0.26), col)
+	end
+
+	local topY = baseY + sign * (0.14 + (count - 1) * 0.2 + 0.2)
+	tube(Vector3.new(0, baseY + sign * 0.1, 0.12), Vector3.new(0.12, topY + sign * 0.45, 0.06), 0.07, Color3.fromRGB(232, 214, 168)) -- spinal cord
+	tube(Vector3.new(0, baseY + sign * 0.02, -0.14), Vector3.new(0.03, topY + sign * 0.1, -0.2), 0.17, Color3.fromRGB(212, 120, 128)) -- windpipe
+	tube(Vector3.new(0.09, baseY + sign * 0.02, -0.02), Vector3.new(0.14, topY + sign * 0.28, -0.06), 0.1, Color3.fromRGB(150, 30, 40)) -- gullet
+	return neck
 end
 
 ------------------------------------------------------------------ SFX
@@ -3882,7 +4051,7 @@ local function play(deathMode, deadChar)
 	for _, p in ipairs(limbs) do
 		p.dirW = (torsoCF0:VectorToWorldSpace(p.spec.dir).Unit + Vector3.new(rr(-0.25, 0.25), rr(0, 0.2), rr(-0.25, 0.25))).Unit
 		p.stump = makeStump(clone, p, p.spec.stump, p.spec.size)
-		sockets[p.name] = makeStump(clone, torsoP, p.spec.socket, p.spec.size)
+		sockets[p.name] = makeStump(clone, torsoP, p.spec.socket, p.spec.size, p.name)
 		stumps[#stumps + 1] = p.stump
 		stumps[#stumps + 1] = sockets[p.name]
 		for _ = 1, 3 do
@@ -3895,6 +4064,17 @@ local function play(deathMode, deadChar)
 	end
 
 	local chest = buildChest(folder)
+	local armBones = {} -- every limb's exposed bones, keyed by piece (arms, legs, and the neck stub on the head)
+	for _, ap in ipairs(limbs) do
+		if ap.name == "Right Arm" or ap.name == "Left Arm" then
+			armBones[ap] = buildArmBones(folder, 1)
+		elseif ap.name == "Right Leg" or ap.name == "Left Leg" then
+			armBones[ap] = buildArmBones(folder, 1.3)
+		elseif ap.name == "Head" then
+			armBones[ap] = buildNeckBones(folder, -1, -0.5, 3)
+		end
+	end
+	local torsoNeck = buildNeckBones(folder, 1, 1.0, 5)
 
 	-- hide + freeze the real character -------------------------
 	local hidden, hideConn = {}, nil
@@ -4028,6 +4208,12 @@ local function play(deathMode, deadChar)
 		-- chest blown open: ribcage + organs revealed, meat and bone fly out
 		showChest(chest, true)
 		updateChest(chest, torsoP.disp, 0)
+		for ap, ab in pairs(armBones) do
+			showChest(ab, true)
+			updateChest(ab, ap.disp, 0)
+		end
+		showChest(torsoNeck, true)
+		updateChest(torsoNeck, torsoP.disp, 0)
 		local tcf = torsoP.cf
 		local cpos = (tcf * CFrame.new(0, 0.1, -0.6)).Position
 		for _ = 1, 34 do
@@ -4082,6 +4268,13 @@ local function play(deathMode, deadChar)
 		end
 		showStump(p.stump, false)
 		showStump(sockets[p.name], false)
+		if p.name == "Head" then showChest(torsoNeck, false) end
+		if armBones[p] then
+			showChest(armBones[p], false)
+			for _ = 1, 4 do
+				spawnGib(pos, Vector3.new(rr(-12, 12), rr(4, 14), rr(-12, 12)), true)
+			end
+		end
 		for _, v in ipairs(p.veins) do setMode(v, "retract", clock) end
 		S.trauma = math.min(1, S.trauma + 0.32)
 		S.flash = math.max(S.flash, 0.4)
@@ -4278,6 +4471,8 @@ local function play(deathMode, deadChar)
 			end
 
 			updateChest(chest, torsoP.disp, beat)
+			for ap, ab in pairs(armBones) do updateChest(ab, ap.disp, 0) end
+			updateChest(torsoNeck, torsoP.disp, 0)
 
 			-- stumps (cut faces, mist, droplet spray)
 			if burstDone then
