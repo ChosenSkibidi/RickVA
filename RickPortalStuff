@@ -3648,35 +3648,60 @@ local function buildChest(parent)
 	end
 
 	-- organs behind the ribs
-	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(0.43, 0.28, -0.58), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15) -- lungs
-	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(-0.43, 0.28, -0.58), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.78, 0.4, 0.4), CFrame.new(0.3, -0.5, -0.58), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)  -- liver
-	for k = 1, 7 do -- intestines
-		add(Vector3.new(0.32, 0.3, 0.3), CFrame.new(-0.55 + k * 0.18, -0.72 + math.sin(k * 1.7) * 0.08, -0.58),
-			Color3.fromRGB(206, 108, 118), Enum.PartType.Ball, 0.2)
+	add(Vector3.new(0.56, 0.86, 0.32), CFrame.new(0.5, 0.34, -0.55), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.5, 0.94, 0.32), CFrame.new(-0.52, 0.3, -0.55), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(1.5, 0.16, 0.34), CFrame.new(0, -0.16, -0.56), Color3.fromRGB(168, 88, 86), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.82, 0.42, 0.34), CFrame.new(0.28, -0.44, -0.56), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)
+	add(Vector3.new(0.5, 0.42, 0.3), CFrame.new(-0.38, -0.42, -0.57), Color3.fromRGB(204, 118, 110), Enum.PartType.Ball, 0.2)
+	add(Vector3.new(0.2, 0.4, 0.26), CFrame.new(-0.72, -0.28, -0.5), Color3.fromRGB(104, 38, 66), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.2, 0.42, 0.24), CFrame.new(0.7, -0.62, -0.5), Color3.fromRGB(120, 44, 50), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.2, 0.42, 0.24), CFrame.new(-0.7, -0.56, -0.5), Color3.fromRGB(120, 44, 50), Enum.PartType.Ball, 0.15)
+	for loopRow = 1, 2 do
+		for loopColumn = 1, 6 do
+			add(Vector3.new(0.3, 0.26, 0.3),
+				CFrame.new(-0.46 + (loopColumn - 1) * 0.184 + (loopRow - 1) * 0.09,
+					-0.78 - (loopRow - 1) * 0.12 + math.sin(loopColumn * 2.1 + loopRow * 1.3) * 0.04, -0.57),
+				Color3.fromRGB(206 - loopRow * 6, 108 - loopRow * 4, 118 - loopRow * 4), Enum.PartType.Ball, 0.2)
+		end
+	end
+	local colonSpots = {
+		Vector2.new(0.6, -0.9), Vector2.new(0.63, -0.78), Vector2.new(0.6, -0.67),
+		Vector2.new(0.4, -0.64), Vector2.new(0.2, -0.63), Vector2.new(0, -0.64), Vector2.new(-0.2, -0.63), Vector2.new(-0.4, -0.64),
+		Vector2.new(-0.6, -0.67), Vector2.new(-0.63, -0.78), Vector2.new(-0.6, -0.9),
+	}
+	for _, colonSpot in ipairs(colonSpots) do
+		add(Vector3.new(0.27, 0.27, 0.27), CFrame.new(colonSpot.X, colonSpot.Y, -0.58), Color3.fromRGB(190, 120, 104), Enum.PartType.Ball, 0.2)
 	end
 	local heartP = newPart(parent, Vector3.new(0.42, 0.52, 0.38), Color3.fromRGB(176, 12, 26), Enum.PartType.Ball)
 	heartP.Transparency = 1
 	heartP.Reflectance = 0.28
-	chest.heart = { part = heartP, cf = CFrame.new(-0.22, 0.12, -0.66), size = heartP.Size }
+	chest.heart = { part = heartP, cf = CFrame.new(-0.14, 0.1, -0.6), size = heartP.Size }
 
-	-- ribs: six pairs bowing out of the chest and meeting at the sternum (two of them are snapped)
 	local depth = 0.24
-	for i = 1, 6 do
-		local y0 = 0.82 - (i - 1) * 0.2
-		local a = 0.8 - (i - 1) * 0.025
-		local th = 0.09 - (i - 1) * 0.004
+	for ribIndex = 1, 12 do
+		local ribHeight = 0.88 - (ribIndex - 1) * 0.11
+		local ribHalfWidth = 0.8 - math.abs(ribIndex - 8.5) * 0.03
+		local ribThickness = 0.065 - (ribIndex - 1) * 0.0018
+		local ribDrop = 0.08 + (ribIndex - 1) * 0.02
 		for side = -1, 1, 2 do
-			local tmax = ((i == 3 and side == 1) or (i == 5 and side == -1)) and 0.62 or 1
-			local prev
-			for seg = 0, 4 do
-				local t = seg / 4 * tmax
-				local pt = Vector3.new(side * a * math.cos(t * PI / 2), y0 - 0.12 * t, -0.5 - depth * math.sin(t * PI / 2))
-				if prev then bar(prev, pt, th) end
-				prev = pt
+			local isSnapped = (ribIndex == 3 and side == 1) or (ribIndex == 5 and side == -1)
+			local reach = 1
+			if isSnapped then
+				reach = 0.62
+			elseif ribIndex >= 11 then
+				reach = 0.5
+			elseif ribIndex >= 8 then
+				reach = 0.85
 			end
-			if tmax < 1 then
-				bar(prev, prev + Vector3.new(side * 0.05, -0.13, -0.09), th * 0.7) -- jagged broken end
+			local previousPoint
+			for segment = 0, 3 do
+				local t = segment / 3 * reach
+				local point = Vector3.new(side * ribHalfWidth * math.cos(t * PI / 2), ribHeight - ribDrop * t, -0.5 - depth * math.sin(t * PI / 2))
+				if previousPoint then bar(previousPoint, point, ribThickness) end
+				previousPoint = point
+			end
+			if isSnapped then
+				bar(previousPoint, previousPoint + Vector3.new(side * 0.05, -0.13, -0.09), ribThickness * 0.7)
 			end
 		end
 	end
@@ -3701,12 +3726,12 @@ local function buildChest(parent)
 		bar(Vector3.new(side * 0.52, -1.05, -0.15), Vector3.new(side * 0.07, -1.3, -0.4), 0.13) -- pubic ramus
 		bar(Vector3.new(side * 0.5, -1.05, 0.12), Vector3.new(side * 0.42, -1.42, 0.22), 0.15)   -- ischium
 		add(Vector3.new(0.2, 0.2, 0.2), CFrame.new(side * 0.42, -1.44, 0.22), bcol(), Enum.PartType.Ball)
-		for k = 1, 8 do -- hip socket rim + dark cup
-			local ang = k / 8 * PI * 2
-			add(Vector3.new(0.15, 0.1, 0.15),
-				CFrame.new(side * 0.5 + math.cos(ang) * 0.3, -1.02, math.sin(ang) * 0.3) * CFrame.Angles(rr(-0.3, 0.3), ang, rr(-0.3, 0.3)), bcol())
+		for rimIndex = 1, 8 do
+			local rimAngle = rimIndex / 8 * PI * 2
+			add(Vector3.new(0.1, 0.15, 0.15),
+				CFrame.new(side * 0.56, -1.02 + math.cos(rimAngle) * 0.3, math.sin(rimAngle) * 0.3) * CFrame.Angles(rimAngle, rr(-0.3, 0.3), rr(-0.3, 0.3)), bcol())
 		end
-		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.0, 0) * CFrame.Angles(0, 0, PI / 2), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
+		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.02, 0), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
 	end
 	for _ = 1, 10 do -- torn flesh hanging off the pelvis
 		local sz = rr(0.16, 0.34)
@@ -3769,14 +3794,14 @@ local function buildArmBones(parent, k)
 	end
 
 	-- humerus (upper arm) with a joint knob at the shoulder end and at the elbow
-	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, 0.0, -0.62), 0.17)
+	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, -0.3, -0.62), 0.17)
 	knob(Vector3.new(0.02, 0.95, -0.6), 0.27)
-	knob(Vector3.new(0.04, -0.02, -0.62), 0.25)
+	knob(Vector3.new(0.04, -0.32, -0.62), 0.25)
 	-- radius + ulna (forearm); the radius sticks out past the wrist, the ulna is snapped short
-	bone(Vector3.new(-0.1, -0.06, -0.6), Vector3.new(-0.13, -1.3, -0.62), 0.12)
-	bone(Vector3.new(0.12, -0.06, -0.6), Vector3.new(0.15, -0.78, -0.62), 0.11)
-	bone(Vector3.new(0.15, -0.78, -0.62), Vector3.new(0.2, -0.94, -0.66), 0.07)  -- jagged broken end
-	bone(Vector3.new(-0.13, -1.3, -0.62), Vector3.new(-0.1, -1.4, -0.66), 0.06)
+	bone(Vector3.new(-0.1, -0.32, -0.6), Vector3.new(-0.13, -1.2, -0.62), 0.12)
+	bone(Vector3.new(0.12, -0.32, -0.6), Vector3.new(0.15, -0.9, -0.62), 0.11)
+	bone(Vector3.new(0.15, -0.9, -0.62), Vector3.new(0.2, -1.04, -0.66), 0.07)  -- jagged broken end
+	bone(Vector3.new(-0.13, -1.2, -0.62), Vector3.new(-0.1, -1.3, -0.66), 0.06)
 	return arm
 end
 
@@ -3814,7 +3839,7 @@ local function buildNeckBones(parent, sign, baseY, count)
 		local base = CFrame.new(rr(-0.04, 0.04) * (i + 1), y, 0.14 + rr(-0.03, 0.03) * (i + 1))
 			* CFrame.Angles(tilt, rr(-0.3, 0.3), tilt)
 		add(Vector3.new(0.15, 0.36, 0.36), base * CFrame.Angles(0, 0, PI / 2), col, Enum.PartType.Cylinder)
-		add(Vector3.new(0.62, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
+		add(Vector3.new(0.46, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
 		add(Vector3.new(0.08, 0.1, 0.3), base * CFrame.new(0, 0, 0.26), col)
 	end
 
