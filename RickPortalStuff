@@ -49,6 +49,7 @@ RETURN_PORTAL_OFFSET = 5
 EXIT_PORTAL_FRONT_DISTANCE = 7
 EXIT_PORTAL_BEHIND_DISTANCE = 2   -- regular portals: you appear this far behind the exit portal and walk out through it
 EXIT_WALK_DISTANCE = 6            -- how far the auto-walk carries you after a regular portal
+EXIT_WALK_LOCK_FACING = true      -- true: the walk out keeps you facing/walking the portal's direction (stops shiftlock/camera turning you); false: old behaviour, you steer by where you face
 EXIT_ANIMATION_ID = "rbxassetid://106876290279410"
 SHOOT_ANIMATION_ID = "rbxassetid://17275150809"
 PORTAL_FOV_SNAP = 95
@@ -104,6 +105,7 @@ VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = t
 -- Death flow: you explode where you die and your corpse stays there. You respawn hidden on top of the corpse, and
 -- after the 0.4s respawn delay the corpse regenerates into you, right where you died.
 DEATH_TP_ENABLED         = true
+DEATH_TP_DELAY           = 0.2   -- extra seconds you wait after respawning before you get sent back to where you died
 
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
 -- notification pops up. Press Yes and a portal opens under your feet and sends you
@@ -150,6 +152,11 @@ DODGE_POINT_BLANK     = 5      -- studs: closer than this, facing doesn't matter
 DODGE_FACING_NEAR     = 0.1    -- how much they must face you at point-blank range (dot: "kind of facing")
 DODGE_FACING_FAR      = 0.85   -- how much they must face you at max range (dot: "properly facing")
 DODGE_BEHIND_DISTANCE = 8      -- studs behind them that you land
+BEHIND_BUTTON_DISTANCE = 6     -- studs behind the nearest enemy that the blue mini button lands you
+BEHIND_ALREADY_DOT     = -0.5  -- if you're already this far behind them (dot: -1 = dead behind, 0 = their side), the button does nothing
+BEHIND_BUTTON_COOLDOWN = 5     -- seconds between presses of the blue mini button
+BEHIND_CLICK_METHOD    = "keypress"  -- how the blue button left-clicks: "keypress" (keypress(0x01) = VK_LBUTTON) or "vim" (VirtualInputManager)
+BEHIND_BUTTON_COLOR    = Color3.fromRGB(70, 150, 255)  -- blue (the retreat mini button is green)
 DODGE_COOLDOWN        = 2
 DODGE_GLOW_COLOR      = Color3.fromRGB(45, 105, 195)  -- hologram blue (not cyan)
 DODGE_FLASH_TIME      = 0.8    -- seconds the blue highlight takes to fade out
@@ -365,10 +372,46 @@ end
 
 -- Pushes you forward at your WalkSpeed for the first `distance` studs after a regular portal,
 -- even if you let go of the controls, so the walk out of the exit portal always looks smooth.
+walkLock = { id = 0, autoRotate = nil }
+
 function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTime, dir, conn)
     hum = root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
     function currentSpeed()
         return hum and hum.WalkSpeed or 16
+    end
+
+    -- shiftlock turns you to the camera, so while the walk lasts AutoRotate is off and your root is held
+    -- pointing along `look` every frame (AutoRotate goes back to what it was when the walk ends)
+    local lockFacing = EXIT_WALK_LOCK_FACING and hum ~= nil
+    local walkId = 0
+    local myHum = hum
+    local function releaseFacing()
+        if lockFacing and walkLock.id == walkId then
+            pcall(function()
+                RunService:UnbindFromRenderStep("RickPortalWalkFace")
+            end)
+            if myHum.Parent and walkLock.autoRotate ~= nil then
+                myHum.AutoRotate = walkLock.autoRotate
+            end
+            walkLock.autoRotate = nil
+        end
+    end
+    if lockFacing then
+        walkLock.id = walkLock.id + 1
+        walkId = walkLock.id
+        if walkLock.autoRotate == nil then
+            walkLock.autoRotate = myHum.AutoRotate
+        end
+        myHum.AutoRotate = false
+        pcall(function()
+            RunService:UnbindFromRenderStep("RickPortalWalkFace")
+        end)
+        RunService:BindToRenderStep("RickPortalWalkFace", Enum.RenderPriority.Camera.Value + 1, function()
+            if root.Parent then
+                local p = root.Position
+                root.CFrame = CFrame.lookAt(p, p + look)
+            end
+        end)
     end
 
     bv = Instance.new("BodyVelocity")
@@ -389,12 +432,14 @@ function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTim
         if not bv.Parent or not root.Parent or walked >= distance or timedOut then
             conn:Disconnect()
             bv:Destroy()
+            releaseFacing()
             return
         end
 
         -- after the first EXIT_PORTAL_BEHIND_DISTANCE studs (you've passed the exit portal),
         -- steer by where you're facing now. Y is thrown away so it can never push you up or down.
-        if walked >= EXIT_PORTAL_BEHIND_DISTANCE then
+        -- (skipped when the facing is locked: you keep going the way the portal sends you)
+        if not lockFacing and walked >= EXIT_PORTAL_BEHIND_DISTANCE then
             live = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
             if live.Magnitude > 0.01 then
                 dir = live.Unit
@@ -1370,7 +1415,7 @@ function playDodgeArrival(character, root, playVoice, playStreakVoice, sound)
 end
 
 -- the teleport itself: burst, land behind them, highlight, sounds, blink. Returns false if it couldn't.
-function teleportBehind(attackerChar, playVoice, playStreakVoice)
+function teleportBehind(attackerChar, playVoice, playStreakVoice, behindDistance)
     character = LocalPlayer.Character
     humanoid = character and character:FindFirstChildOfClass("Humanoid")
     root = character and character:FindFirstChild("HumanoidRootPart")
@@ -1383,7 +1428,7 @@ function teleportBehind(attackerChar, playVoice, playStreakVoice)
     -- land behind them, facing them
     look = flatXZ(aRoot.CFrame.LookVector)
     look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
-    landPos = aRoot.Position - look * DODGE_BEHIND_DISTANCE
+    landPos = aRoot.Position - look * (behindDistance or DODGE_BEHIND_DISTANCE)
     root.CFrame = CFrame.new(landPos, Vector3.new(aRoot.Position.X, landPos.Y, aRoot.Position.Z))
 
     playDodgeArrival(character, root, playVoice, playStreakVoice)
@@ -1392,10 +1437,25 @@ end
 
 dodgeCameraLock = { token = 0 }
 
+-- Holds the camera AND your character pointed at the target for `duration` seconds.
+-- Shiftlock keeps spinning your character back to the camera, so AutoRotate is switched off while the
+-- hold lasts and your root is turned toward the target every frame; the camera ends up pointing at them
+-- too, so shiftlock keeps you facing them afterwards. AutoRotate goes back to what it was.
 function lockCameraOn(targetRoot, duration, camera, token)
     if not targetRoot then return end
     dodgeCameraLock.token = dodgeCameraLock.token + 1
     token = dodgeCameraLock.token
+
+    local myChar = LocalPlayer.Character
+    local myHum = myChar and myChar:FindFirstChildOfClass("Humanoid")
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+    if myHum then
+        if dodgeCameraLock.autoRotate == nil then
+            dodgeCameraLock.autoRotate = myHum.AutoRotate
+        end
+        myHum.AutoRotate = false
+    end
+
     pcall(function()
         RunService:UnbindFromRenderStep("RickDodgeCameraLock")
     end)
@@ -1403,6 +1463,13 @@ function lockCameraOn(targetRoot, duration, camera, token)
         camera = workspace.CurrentCamera
         if camera and targetRoot.Parent then
             camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetRoot.Position)
+            if myRoot and myRoot.Parent then
+                local p, t = myRoot.Position, targetRoot.Position
+                local flat = Vector3.new(t.X, p.Y, t.Z)
+                if (flat - p).Magnitude > 0.05 then
+                    myRoot.CFrame = CFrame.lookAt(p, flat)
+                end
+            end
         end
     end)
     task.delay(duration, function()
@@ -1410,6 +1477,10 @@ function lockCameraOn(targetRoot, duration, camera, token)
             pcall(function()
                 RunService:UnbindFromRenderStep("RickDodgeCameraLock")
             end)
+            if myHum and myHum.Parent and dodgeCameraLock.autoRotate ~= nil then
+                myHum.AutoRotate = dodgeCameraLock.autoRotate
+            end
+            dodgeCameraLock.autoRotate = nil
         end
     end)
 end
@@ -1605,6 +1676,9 @@ function teleportToDeathSpot(character)
     deathTp.pendingCF = nil
     if RickRegen and RickRegen.HasCorpse and RickRegen.HasCorpse() then return end
     if not DEATH_TP_ENABLED or not deathCF then return end
+
+    task.wait(DEATH_TP_DELAY)
+    if not character.Parent or LocalPlayer.Character ~= character then return end
 
     local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 3)
     if not root then return end
@@ -1991,6 +2065,149 @@ function buildMiniRetreatButton(parent)
             cooldownConn = nil
         end
         mini:Destroy()
+    end
+end
+
+-- Blue mini button parked on top of the main portal button. Teleports you 6 studs behind the
+-- nearest enemy with the dodge VFX (burst + blue flash + blink) and ONLY the always-on dodge sound
+-- (EXIT_SOUND): no voiceline, no streak voiceline.
+function nearestEnemyChar()
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return nil end
+    local best, bestDist = nil, math.huge
+    for _, t in ipairs(getTargets()) do
+        local hum = t.root.Parent and t.root.Parent:FindFirstChildOfClass("Humanoid")
+        if t.root.Parent and (not hum or hum.Health > 0) then
+            local d = (t.root.Position - root.Position).Magnitude
+            if d < bestDist then
+                best, bestDist = t.root.Parent, d
+            end
+        end
+    end
+    return best
+end
+
+-- left click for the blue button (the auto-dodge keeps using clickMouse)
+function leftClick()
+    RunService.RenderStepped:Wait()
+    if BEHIND_CLICK_METHOD == "vim" then
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            local pos = UserInputService:GetMouseLocation()
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 1)
+            task.wait(0.05)
+            vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
+        end)
+    elseif keypress and keyrelease then
+        pcall(keypress, 0x01)   -- 0x01 = VK_LBUTTON
+        task.wait(0.05)
+        pcall(keyrelease, 0x01)
+    else
+        warn("[RickPortal] keypress/keyrelease aren't available in this executor")
+    end
+end
+
+-- true if you're already standing behind that enemy (inside the cone behind their back)
+function isAlreadyBehind(enemyChar)
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local aRoot = enemyChar and enemyChar:FindFirstChild("HumanoidRootPart")
+    if not root or not aRoot then return false end
+    local toMe = flatXZ(root.Position - aRoot.Position)
+    local look = flatXZ(aRoot.CFrame.LookVector)
+    if toMe.Magnitude < 0.01 or look.Magnitude < 0.01 then return false end
+    return look.Unit:Dot(toMe.Unit) <= BEHIND_ALREADY_DOT
+end
+
+function buildMiniBehindButton(parent)
+    local behindBtn = Instance.new("ImageButton")
+    behindBtn.Name = "MiniBehind"
+    behindBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+    behindBtn.Position = UDim2.new(0.5, 0, -0.42, 0)
+    behindBtn.Size = UDim2.new(0.58, 0, 0.58, 0)
+    behindBtn.BackgroundColor3 = Color3.new(0.078431, 0.094118, 0.113725)
+    behindBtn.BackgroundTransparency = 0.5
+    behindBtn.BorderSizePixel = 0
+    behindBtn.AutoButtonColor = false
+    behindBtn.Image = "rbxassetid://138900219857805"
+    behindBtn.ImageColor3 = BEHIND_BUTTON_COLOR
+    behindBtn.ScaleType = Enum.ScaleType.Stretch
+    behindBtn.Active = true
+    behindBtn.ZIndex = 2
+    behindBtn.Parent = parent
+
+    local behindCorner = Instance.new("UICorner")
+    behindCorner.CornerRadius = UDim.new(1, 0)
+    behindCorner.Parent = behindBtn
+
+    local behindStroke = Instance.new("UIStroke")
+    behindStroke.Color = BEHIND_BUTTON_COLOR
+    behindStroke.Thickness = 2
+    behindStroke.Transparency = 0.3
+    behindStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    behindStroke.Parent = behindBtn
+
+    local behindCountdown = Instance.new("TextLabel")
+    behindCountdown.Name = "Countdown"
+    behindCountdown.BackgroundTransparency = 1
+    behindCountdown.Size = UDim2.new(1, 0, 1, 0)
+    behindCountdown.FontFace = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    behindCountdown.Text = ""
+    behindCountdown.TextSize = 14
+    behindCountdown.TextColor3 = Color3.new(1, 1, 1)
+    behindCountdown.TextStrokeColor3 = Color3.new(0, 0, 0)
+    behindCountdown.TextStrokeTransparency = 0.3
+    behindCountdown.Visible = false
+    behindCountdown.ZIndex = 3
+    behindCountdown.Parent = behindBtn
+
+    local cooldownEnd = 0
+    local cooldownConn = nil
+
+    local function setReady(ready)
+        behindBtn.ImageTransparency = ready and 0 or 0.7
+        behindStroke.Color = ready and BEHIND_BUTTON_COLOR or Color3.fromRGB(230, 70, 70)
+        behindCountdown.Visible = not ready
+    end
+
+    local function startCooldown()
+        cooldownEnd = os.clock() + BEHIND_BUTTON_COOLDOWN
+        setReady(false)
+        if cooldownConn then
+            cooldownConn:Disconnect()
+        end
+        cooldownConn = RunService.Heartbeat:Connect(function()
+            local remaining = cooldownEnd - os.clock()
+            if remaining <= 0 then
+                cooldownConn:Disconnect()
+                cooldownConn = nil
+                setReady(true)
+                return
+            end
+            behindCountdown.Text = tostring(math.ceil(remaining))
+        end)
+    end
+
+    local behindConn = behindBtn.Activated:Connect(function()
+        if os.clock() < cooldownEnd or failsafe.retreating then return end
+        local enemyChar = nearestEnemyChar()
+        if not enemyChar or isAlreadyBehind(enemyChar) then return end
+        -- playVoice = false, playStreakVoice = false -> only EXIT_SOUND plays
+        if teleportBehind(enemyChar, false, false, BEHIND_BUTTON_DISTANCE) then
+            startCooldown()
+            lockCameraOn(enemyChar:FindFirstChild("HumanoidRootPart"), DODGE_CAMERA_LOCK_TIME)
+            task.spawn(leftClick)
+        end
+    end)
+
+    return function()
+        behindConn:Disconnect()
+        if cooldownConn then
+            cooldownConn:Disconnect()
+            cooldownConn = nil
+        end
+        behindBtn:Destroy()
     end
 end
 
@@ -2764,6 +2981,7 @@ bloom.Parent = Lighting
 
 portalGui, portalButton = buildPortalButton()
 miniCleanup = buildMiniRetreatButton(portalButton)
+miniBehindCleanup = buildMiniBehindButton(portalButton)
 buttonConn = portalButton.Activated:Connect(function()
     if menuGui then
         closeTargetMenu()
@@ -3295,6 +3513,9 @@ local START_TAG = "RickRegen_StartSFX"
 -- All of these fire at the same moment, when the accessories get their white highlight (the final slam),
 -- and again at the very start of the sequence.
 local FINALE_TAG = "RickRegen_FinaleSFX"
+local FINALE_ANIMATION_ID = "rbxassetid://134775406437626"  -- plays the instant all the parts have slammed together
+local FINALE_ANIMATION_SPEED = 0.6  -- playback speed of that animation (1 = normal)
+local FINALE_ANIMATION_START = 0.2  -- seconds into the animation it starts from (TimePosition)
 local OPEN_TAG   = "RickRegen_OpenSFX"   -- the same four sounds also play when the sequence begins
 local FINALE_SFX = {
 	{ name = "Audio/lethal slam",       id = "rbxassetid://14798925836", volume = 1 },
@@ -3688,6 +3909,13 @@ local function play(deathMode, deadChar)
 			spawnDrop(c, Vector3.new(math.cos(a) * sp, rr(6, 26), math.sin(a) * sp))
 		end
 		restoreChar()
+		pcall(function() -- your body is back: play the finish animation right now, slowed down
+			local track = playCharacterAnimation(char, FINALE_ANIMATION_ID)
+			if track then
+				track.TimePosition = FINALE_ANIMATION_START
+				track:AdjustSpeed(FINALE_ANIMATION_SPEED)
+			end
+		end)
 		clearRegenSounds() -- accessories are visible again: stop the start sound
 		-- layered finale sounds, all started together (leftovers from an earlier run get wiped first)
 		for _, inst in ipairs(workspace:GetChildren()) do
@@ -4116,9 +4344,16 @@ _G.RickPortal = {
         pcall(function()
             RunService:UnbindFromRenderStep("RickDodgeCameraLock")
         end)
+        pcall(function()
+            RunService:UnbindFromRenderStep("RickPortalWalkFace")
+        end)
         if miniCleanup then
             miniCleanup()
             miniCleanup = nil
+        end
+        if miniBehindCleanup then
+            miniBehindCleanup()
+            miniBehindCleanup = nil
         end
         failsafeCharConn:Disconnect()
         failsafe.bindId = failsafe.bindId + 1
