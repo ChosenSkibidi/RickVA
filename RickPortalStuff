@@ -95,7 +95,6 @@ AREAS = {
 -- (within VOID_NEAR_RADIUS studs, seen in the last VOID_MEMORY seconds), or to VOID_FALLBACK_AREA
 -- (a name in AREAS) if you weren't near anyone or that player isn't a valid target any more.
 VOID_Y             = 325.3045349121094
-UPPER_VOID_Y       = 1056.8778076171875
 VOID_FALLBACK_AREA = "Mountain Peak"
 VOID_NEAR_RADIUS   = 80     -- studs
 VOID_MEMORY        = 10     -- seconds
@@ -106,7 +105,7 @@ VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = t
 -- Death flow: you explode where you die and your corpse stays there. You respawn hidden on top of the corpse, and
 -- after the 0.4s respawn delay the corpse regenerates into you, right where you died.
 DEATH_TP_ENABLED         = true
-DEATH_TP_DELAY           = 0.5  -- extra seconds you wait after respawning before you get sent back to where you died
+DEATH_TP_DELAY           = 0.5   -- extra seconds you wait after respawning before you get sent back to where you died
 MORPH_DELAY              = 0.6   -- everything that used to run the instant you respawn now waits this long (same moment as the morph)
 
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
@@ -1442,6 +1441,228 @@ end
 
 dodgeCameraLock = { token = 0 }
 
+-- Rick Prime dialogue box. Call rickSay(lines) any time to play a line set; rickSay() with no argument plays
+-- RICK_FINALE_LINES. A "line set" is a list of { Text, Color (ColorSequence), TextStrokeColor, Bold, Italic,
+-- Shake = { Enabled, Intensity, Lifetime }, TypeSpeed } entries, exactly like RICK_FINALE_LINES below.
+KJDialogue = (function()
+    local Players = game:GetService("Players")
+    local TweenService = game:GetService("TweenService")
+    local Y_OFFSET = UDim2.new(0, 0, 0, -10)
+    local _CollectionService = game:GetService("CollectionService")
+    local _TextService       = game:GetService("TextService")
+    local _LocalPlayer       = Players.LocalPlayer
+
+    local function getColor(p8, p9)
+        local v11 = p9[1].Value
+        for v12 = 1, #p9 - 1 do
+            if p9[v12].Time <= p8 and p8 <= p9[v12 + 1].Time then
+                local v13 = p9[v12]
+                local v14 = p9[v12 + 1]
+                local v15 = (p8 - v13.Time) / (v14.Time - v13.Time)
+                return v13.Value:lerp(v14.Value, v15)
+            end
+        end
+        return v11
+    end
+
+    local function _endLetters(p16)
+        for _, v17 in p16:GetChildren() do
+            if v17.Name == "letter" then
+                v17:SetAttribute("Ending", true)
+                TweenService:Create(v17, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                    Position               = v17.Position + UDim2.new(0, 0, 0, 50),
+                    TextTransparency       = 1,
+                    TextStrokeTransparency = 1,
+                }):Play()
+                game.Debris:AddItem(v17, 0.5)
+            end
+        end
+    end
+
+    local function _speak(lines, speaker)
+        local v21    = speaker or _LocalPlayer
+        local v_u_22 = _LocalPlayer.PlayerGui:FindFirstChild(v21.Name .. "KJUI")
+            or game:GetService("ReplicatedStorage").Resources.UFW.TekrinnDialogue.KJDialogue:Clone()
+        local v_u_24 = 0
+        local v_u_25 = 0
+        local startDelay = (lines[1] and lines[1].StartDelay) or 0 -- optional lead-in: image, name and letters all wait this long
+        local v26    = startDelay
+
+        if v_u_22:GetAttribute("Created") then
+            v_u_22:SetAttribute("Created", os.clock() + startDelay)
+        else
+            local v_u_27 = v_u_22:WaitForChild("Holder"):WaitForChild("Template")
+            local v28    = v_u_22.Holder
+            v_u_27:WaitForChild("ImageLabel").Image = "rbxassetid://110047452327354"
+            v_u_27:WaitForChild("Name").TextColor3 = Color3.fromRGB(168, 216, 240)
+            v28.Position = v28.Position - UDim2.new(0, 0, 0, #_CollectionService:GetTagged("KJUI") * 100)
+            v_u_27:WaitForChild("ImageLabel").Position          = v_u_27:WaitForChild("ImageLabel").Position - UDim2.new(0, 0, 0, 100)
+            v_u_27:WaitForChild("ImageLabel").ImageTransparency = 1
+            v_u_27:WaitForChild("Name").Position                = v_u_27:WaitForChild("Name").Position - UDim2.new(0, 0, 0, 100)
+            v_u_27:WaitForChild("Name").TextTransparency        = 1
+            v_u_27:WaitForChild("Name").TextStrokeTransparency  = 1
+            task.delay(startDelay, function()
+                if not v_u_22.Parent then return end
+                TweenService:Create(v_u_27:WaitForChild("ImageLabel"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Position          = v_u_27:WaitForChild("ImageLabel").Position + UDim2.new(0, 0, 0, 100),
+                    ImageTransparency = 0,
+                }):Play()
+                TweenService:Create(v_u_27:WaitForChild("Name"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+                    Position               = v_u_27:WaitForChild("Name").Position + UDim2.new(0, 0, 0, 100),
+                    TextTransparency       = 0,
+                    TextStrokeTransparency = 0,
+                }):Play()
+            end)
+            task.spawn(function()
+                v_u_22:SetAttribute("Created", os.clock() + startDelay)
+                repeat task.wait() until os.clock() - v_u_22:GetAttribute("Created") > 5 or not v_u_22.Parent
+                v_u_22.Name = "deleting"
+                _endLetters(v_u_22.Holder.Template)
+                TweenService:Create(v_u_27:WaitForChild("ImageLabel"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                    Position          = v_u_27:WaitForChild("ImageLabel").Position - UDim2.new(0, 0, 0, 100),
+                    ImageTransparency = 1,
+                }):Play()
+                TweenService:Create(v_u_27:WaitForChild("Name"), TweenInfo.new(1, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                    Position               = v_u_27:WaitForChild("Name").Position - UDim2.new(0, 0, 0, 100),
+                    TextTransparency       = 1,
+                    TextStrokeTransparency = 1,
+                }):Play()
+                task.delay(1, function() v_u_22:Destroy() end)
+            end)
+        end
+
+        v_u_22.Parent  = _LocalPlayer.PlayerGui
+        v_u_22.Enabled = true
+        v_u_22.Name    = v21.Name .. "KJUI"
+        v_u_22:AddTag("KJUI")
+        v_u_22:WaitForChild("Holder"):WaitForChild("Template"):WaitForChild("Name").Text = "Rick Prime"
+
+        local v32 = false
+        for _, v33 in pairs(lines) do
+            if v33.HigherUp then
+                TweenService:Create(v_u_22.Holder, TweenInfo.new(0.2), {
+                    Position = UDim2.new(0.5, 0, 0.965, 0) + Y_OFFSET,
+                }):Play()
+                v32 = true
+            end
+        end
+        if not v32 and v_u_22.Holder.Position ~= UDim2.new(0.5, 0, 1, 0) + Y_OFFSET then
+            TweenService:Create(v_u_22.Holder, TweenInfo.new(1), {
+                Position = UDim2.new(0.5, 0, 1, 0) + Y_OFFSET,
+            }):Play()
+        end
+
+        _endLetters(v_u_22.Holder.Template)
+
+        for _, v34 in lines do
+            local v36 = v34.Bold and Enum.Font.SourceSansBold or (v34.Italic and Enum.Font.SourceSansItalic or Enum.Font.SourceSans)
+            for _, v37 in string.split(v34.Text, "") do
+                v_u_24 = v_u_24 + _TextService:GetTextSize(v37, 25, v36, Vector2.new(100, 100)).X
+            end
+        end
+
+        for _, v_u_38 in lines do
+            local v40 = v_u_38.Bold and Enum.Font.SourceSansBold or (v_u_38.Italic and Enum.Font.SourceSansItalic or Enum.Font.SourceSans)
+            for _, v41 in string.split(v_u_38.Text, "") do
+                local v42    = _TextService:GetTextSize(v41, 25, v40, Vector2.new(100, 100))
+                local v_u_43 = Instance.new("TextLabel")
+                v_u_43.AnchorPoint            = Vector2.new(0, 0.5)
+                v_u_43.Position               = UDim2.new(0.5, v_u_25 - v_u_24 / 2 // 1, 0.5, 10)
+                v_u_43.Size                   = UDim2.new(0, v42.X, 0, v42.Y)
+                v_u_43.Text                   = v41
+                v_u_43.Name                   = "letter"
+                v_u_43.Font                   = v40
+                v_u_43.TextSize               = 25
+                v_u_43.BackgroundTransparency = 1
+                v_u_43.TextStrokeColor3       = v_u_38.TextStrokeColor
+                v_u_43.TextStrokeTransparency = 1
+                v_u_43.TextTransparency       = 1
+                v_u_43.Parent                 = v_u_22.Holder.Template
+                local _capPos = v_u_25
+                task.delay(v26, function()
+                    local v44 = os.clock()
+                    repeat
+                        local v46 = math.min((os.clock() - v44) / 0.35, 1)
+                        local v48 = math.min((os.clock() - v44) / v_u_38.Shake.Lifetime, 1)
+                        local v49 = not v_u_38.Shake.Enabled
+                            and UDim2.new(0, 0, 0, 0)
+                            or  UDim2.new(
+                                    0, math.random(-v_u_38.Shake.Intensity, v_u_38.Shake.Intensity) * (1 - v48),
+                                    0, math.random(-v_u_38.Shake.Intensity, v_u_38.Shake.Intensity) * (1 - v48)
+                                )
+                        local v53 = 1 - (math.pow(v46 - 1, 3) * 2.70158 + 1 + math.pow(v46 - 1, 2) * 1.70158)
+                        v_u_43.TextStrokeTransparency = (1 - v46) ^ 10
+                        v_u_43.TextTransparency       = v53
+                        v_u_43.TextSize               = 25 + 25 * v53
+                        v_u_43.TextColor3             = getColor(v46, v_u_38.Color.Keypoints)
+                        v_u_43.Position               = UDim2.new(0.5, _capPos - v_u_24 / 2 // 1, 0.5, 0) + v49
+                        task.wait()
+                    until math.max(0.35, v_u_38.Shake.Lifetime) < (os.clock() - v44)
+                        or not v_u_43
+                        or not v_u_43:IsDescendantOf(v_u_22)
+                        or v_u_43:GetAttribute("Ending")
+                    if v_u_43 then
+                        v_u_43.TextStrokeTransparency = 0
+                        v_u_43.TextTransparency       = 0
+                        v_u_43.TextSize               = 25
+                        v_u_43.TextColor3             = v_u_38.Color.Keypoints[#v_u_38.Color.Keypoints].Value
+                        v_u_43.Position               = UDim2.new(0.5, _capPos - v_u_24 / 2 // 1, 0.5, 0)
+                    end
+                end)
+                v26    = v26 + v_u_38.TypeSpeed
+                v_u_25 = v_u_25 + v42.X
+            end
+            v26 = v26 + 0.15
+        end
+    end
+
+    local function Speak(speaker, lines)
+        _speak(lines, speaker)
+    end
+
+    return { Speak = Speak }
+end)()
+
+RICK_FINALE_LINES = {
+    {
+        StartDelay      = 0.48, -- the same wait the old "Alright... " lead-in gave before this line started
+        Text            = "LETS DO THIS THEN!",
+        Color           = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(0,   0,   0)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(168, 216, 240)),
+        }),
+        TextStrokeColor = Color3.new(0, 0, 0),
+        Bold            = true,
+        Italic          = true,
+        Shake           = { Enabled = true, Intensity = 5, Lifetime = 1 },
+        TypeSpeed       = 0.04,
+    },
+}
+
+-- plain white text (no colour gradient, no bold/italic, no shake) for the sixth-dodge voiceline
+RICK_QUIT_LINES = {
+    {
+        Text            = "This guy does NOT know when to quit!",
+        Color           = ColorSequence.new(Color3.fromRGB(255, 255, 255)),
+        TextStrokeColor = Color3.new(0, 0, 0),
+        Bold            = false,
+        Italic          = false,
+        Shake           = { Enabled = false, Intensity = 1, Lifetime = 2 },
+        TypeSpeed       = 0.03,
+    },
+}
+
+-- Reusable: rickSay() plays the finale lines, rickSay(myLines) plays any other line set.
+-- Safe to call from anywhere; it runs on its own thread and never errors out the caller.
+function rickSay(lines)
+    task.spawn(function()
+        local ok, err = pcall(KJDialogue.Speak, LocalPlayer.Character, lines or RICK_FINALE_LINES)
+        if not ok then
+            warn("[RickPortal] dialogue failed: " .. tostring(err))
+        end
+    end)
+end
+
 -- Holds the camera AND your character pointed at the target for `duration` seconds.
 -- Shiftlock keeps spinning your character back to the camera, so AutoRotate is switched off while the
 -- hold lasts and your root is turned toward the target every frame; the camera ends up pointing at them
@@ -1541,6 +1762,9 @@ function startDodge(attackerChar, attackerId, nextCount, playStreakVoice, playVo
         dodgeStreak.count = playStreakVoice and 0 or nextCount
         lockCameraOn(attackerChar:FindFirstChild("HumanoidRootPart"), DODGE_CAMERA_LOCK_TIME)
         task.spawn(clickMouse)
+        if playStreakVoice then
+            rickSay(RICK_QUIT_LINES) -- shows up with the sixth-dodge audio
+        end
     end
 end
 
@@ -1583,7 +1807,7 @@ function isValidVoidTarget(plr)
     char = plr and plr.Character
     hum = char and char:FindFirstChildOfClass("Humanoid")
     r = char and char:FindFirstChild("HumanoidRootPart")
-    return hum ~= nil and r ~= nil and hum.Health > 0 and r.Position.Y >= VOID_Y and r.Position.Y <= UPPER_VOID_Y
+    return hum ~= nil and r ~= nil and hum.Health > 0 and r.Position.Y >= VOID_Y
 end
 
 voidConn = RunService.Heartbeat:Connect(function()
@@ -1593,7 +1817,7 @@ voidConn = RunService.Heartbeat:Connect(function()
     if not root or not hum or hum.Health <= 0 then return end
 
     -- above the line: keep track of who you're standing near
-    if root.Position.Y >= VOID_Y and root.Position.Y <= UPPER_VOID_Y then
+    if root.Position.Y >= VOID_Y then
         best, bestDist = nil, VOID_NEAR_RADIUS
         for _, plr in ipairs(Players:GetPlayers()) do
             if plr ~= LocalPlayer and isValidVoidTarget(plr) then
@@ -2296,20 +2520,6 @@ end)
 if LocalPlayer.Character then
     task.spawn(applyAppearance, LocalPlayer.Character)
 end
-
-fakeHeadWatchActive = true
-task.spawn(function()
-    while fakeHeadWatchActive do
-        task.wait(5)
-        if not fakeHeadWatchActive then break end
-        local liveFolder = workspace:FindFirstChild("Live")
-        local liveModel = liveFolder and liveFolder:FindFirstChild(LocalPlayer.Name)
-        local watchedFakeHead = liveModel and liveModel:FindFirstChild("FakeHead")
-        if watchedFakeHead and #watchedFakeHead:GetChildren() > 0 then
-            watchedFakeHead:ClearAllChildren()
-        end
-    end
-end)
 
 menuGui = nil
 menuBlur = nil
@@ -3662,60 +3872,35 @@ local function buildChest(parent)
 	end
 
 	-- organs behind the ribs
-	add(Vector3.new(0.56, 0.86, 0.32), CFrame.new(0.5, 0.34, -0.55), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.5, 0.94, 0.32), CFrame.new(-0.52, 0.3, -0.55), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(1.5, 0.16, 0.34), CFrame.new(0, -0.16, -0.56), Color3.fromRGB(168, 88, 86), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.82, 0.42, 0.34), CFrame.new(0.28, -0.44, -0.56), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)
-	add(Vector3.new(0.5, 0.42, 0.3), CFrame.new(-0.38, -0.42, -0.57), Color3.fromRGB(204, 118, 110), Enum.PartType.Ball, 0.2)
-	add(Vector3.new(0.2, 0.4, 0.26), CFrame.new(-0.72, -0.28, -0.5), Color3.fromRGB(104, 38, 66), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.2, 0.42, 0.24), CFrame.new(0.7, -0.62, -0.5), Color3.fromRGB(120, 44, 50), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.2, 0.42, 0.24), CFrame.new(-0.7, -0.56, -0.5), Color3.fromRGB(120, 44, 50), Enum.PartType.Ball, 0.15)
-	for loopRow = 1, 2 do
-		for loopColumn = 1, 6 do
-			add(Vector3.new(0.3, 0.26, 0.3),
-				CFrame.new(-0.46 + (loopColumn - 1) * 0.184 + (loopRow - 1) * 0.09,
-					-0.78 - (loopRow - 1) * 0.12 + math.sin(loopColumn * 2.1 + loopRow * 1.3) * 0.04, -0.57),
-				Color3.fromRGB(206 - loopRow * 6, 108 - loopRow * 4, 118 - loopRow * 4), Enum.PartType.Ball, 0.2)
-		end
-	end
-	local colonSpots = {
-		Vector2.new(0.6, -0.9), Vector2.new(0.63, -0.78), Vector2.new(0.6, -0.67),
-		Vector2.new(0.4, -0.64), Vector2.new(0.2, -0.63), Vector2.new(0, -0.64), Vector2.new(-0.2, -0.63), Vector2.new(-0.4, -0.64),
-		Vector2.new(-0.6, -0.67), Vector2.new(-0.63, -0.78), Vector2.new(-0.6, -0.9),
-	}
-	for _, colonSpot in ipairs(colonSpots) do
-		add(Vector3.new(0.27, 0.27, 0.27), CFrame.new(colonSpot.X, colonSpot.Y, -0.58), Color3.fromRGB(190, 120, 104), Enum.PartType.Ball, 0.2)
+	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(0.43, 0.28, -0.58), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15) -- lungs
+	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(-0.43, 0.28, -0.58), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
+	add(Vector3.new(0.78, 0.4, 0.4), CFrame.new(0.3, -0.5, -0.58), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)  -- liver
+	for k = 1, 7 do -- intestines
+		add(Vector3.new(0.32, 0.3, 0.3), CFrame.new(-0.55 + k * 0.18, -0.72 + math.sin(k * 1.7) * 0.08, -0.58),
+			Color3.fromRGB(206, 108, 118), Enum.PartType.Ball, 0.2)
 	end
 	local heartP = newPart(parent, Vector3.new(0.42, 0.52, 0.38), Color3.fromRGB(176, 12, 26), Enum.PartType.Ball)
 	heartP.Transparency = 1
 	heartP.Reflectance = 0.28
-	chest.heart = { part = heartP, cf = CFrame.new(-0.14, 0.1, -0.6), size = heartP.Size }
+	chest.heart = { part = heartP, cf = CFrame.new(-0.22, 0.12, -0.66), size = heartP.Size }
 
+	-- ribs: six pairs bowing out of the chest and meeting at the sternum (two of them are snapped)
 	local depth = 0.24
-	for ribIndex = 1, 12 do
-		local ribHeight = 0.88 - (ribIndex - 1) * 0.11
-		local ribHalfWidth = 0.8 - math.abs(ribIndex - 8.5) * 0.03
-		local ribThickness = 0.065 - (ribIndex - 1) * 0.0018
-		local ribDrop = 0.08 + (ribIndex - 1) * 0.02
+	for i = 1, 6 do
+		local y0 = 0.82 - (i - 1) * 0.2
+		local a = 0.8 - (i - 1) * 0.025
+		local th = 0.09 - (i - 1) * 0.004
 		for side = -1, 1, 2 do
-			local isSnapped = (ribIndex == 3 and side == 1) or (ribIndex == 5 and side == -1)
-			local reach = 1
-			if isSnapped then
-				reach = 0.62
-			elseif ribIndex >= 11 then
-				reach = 0.5
-			elseif ribIndex >= 8 then
-				reach = 0.85
+			local tmax = ((i == 3 and side == 1) or (i == 5 and side == -1)) and 0.62 or 1
+			local prev
+			for seg = 0, 4 do
+				local t = seg / 4 * tmax
+				local pt = Vector3.new(side * a * math.cos(t * PI / 2), y0 - 0.12 * t, -0.5 - depth * math.sin(t * PI / 2))
+				if prev then bar(prev, pt, th) end
+				prev = pt
 			end
-			local previousPoint
-			for segment = 0, 3 do
-				local t = segment / 3 * reach
-				local point = Vector3.new(side * ribHalfWidth * math.cos(t * PI / 2), ribHeight - ribDrop * t, -0.5 - depth * math.sin(t * PI / 2))
-				if previousPoint then bar(previousPoint, point, ribThickness) end
-				previousPoint = point
-			end
-			if isSnapped then
-				bar(previousPoint, previousPoint + Vector3.new(side * 0.05, -0.13, -0.09), ribThickness * 0.7)
+			if tmax < 1 then
+				bar(prev, prev + Vector3.new(side * 0.05, -0.13, -0.09), th * 0.7) -- jagged broken end
 			end
 		end
 	end
@@ -3740,12 +3925,12 @@ local function buildChest(parent)
 		bar(Vector3.new(side * 0.52, -1.05, -0.15), Vector3.new(side * 0.07, -1.3, -0.4), 0.13) -- pubic ramus
 		bar(Vector3.new(side * 0.5, -1.05, 0.12), Vector3.new(side * 0.42, -1.42, 0.22), 0.15)   -- ischium
 		add(Vector3.new(0.2, 0.2, 0.2), CFrame.new(side * 0.42, -1.44, 0.22), bcol(), Enum.PartType.Ball)
-		for rimIndex = 1, 8 do
-			local rimAngle = rimIndex / 8 * PI * 2
-			add(Vector3.new(0.1, 0.15, 0.15),
-				CFrame.new(side * 0.56, -1.02 + math.cos(rimAngle) * 0.3, math.sin(rimAngle) * 0.3) * CFrame.Angles(rimAngle, rr(-0.3, 0.3), rr(-0.3, 0.3)), bcol())
+		for k = 1, 8 do -- hip socket rim + dark cup
+			local ang = k / 8 * PI * 2
+			add(Vector3.new(0.15, 0.1, 0.15),
+				CFrame.new(side * 0.5 + math.cos(ang) * 0.3, -1.02, math.sin(ang) * 0.3) * CFrame.Angles(rr(-0.3, 0.3), ang, rr(-0.3, 0.3)), bcol())
 		end
-		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.02, 0), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
+		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.0, 0) * CFrame.Angles(0, 0, PI / 2), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
 	end
 	for _ = 1, 10 do -- torn flesh hanging off the pelvis
 		local sz = rr(0.16, 0.34)
@@ -3808,14 +3993,14 @@ local function buildArmBones(parent, k)
 	end
 
 	-- humerus (upper arm) with a joint knob at the shoulder end and at the elbow
-	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, -0.3, -0.62), 0.17)
+	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, 0.0, -0.62), 0.17)
 	knob(Vector3.new(0.02, 0.95, -0.6), 0.27)
-	knob(Vector3.new(0.04, -0.32, -0.62), 0.25)
+	knob(Vector3.new(0.04, -0.02, -0.62), 0.25)
 	-- radius + ulna (forearm); the radius sticks out past the wrist, the ulna is snapped short
-	bone(Vector3.new(-0.1, -0.32, -0.6), Vector3.new(-0.13, -1.2, -0.62), 0.12)
-	bone(Vector3.new(0.12, -0.32, -0.6), Vector3.new(0.15, -0.9, -0.62), 0.11)
-	bone(Vector3.new(0.15, -0.9, -0.62), Vector3.new(0.2, -1.04, -0.66), 0.07)  -- jagged broken end
-	bone(Vector3.new(-0.13, -1.2, -0.62), Vector3.new(-0.1, -1.3, -0.66), 0.06)
+	bone(Vector3.new(-0.1, -0.06, -0.6), Vector3.new(-0.13, -1.3, -0.62), 0.12)
+	bone(Vector3.new(0.12, -0.06, -0.6), Vector3.new(0.15, -0.78, -0.62), 0.11)
+	bone(Vector3.new(0.15, -0.78, -0.62), Vector3.new(0.2, -0.94, -0.66), 0.07)  -- jagged broken end
+	bone(Vector3.new(-0.13, -1.3, -0.62), Vector3.new(-0.1, -1.4, -0.66), 0.06)
 	return arm
 end
 
@@ -3853,7 +4038,7 @@ local function buildNeckBones(parent, sign, baseY, count)
 		local base = CFrame.new(rr(-0.04, 0.04) * (i + 1), y, 0.14 + rr(-0.03, 0.03) * (i + 1))
 			* CFrame.Angles(tilt, rr(-0.3, 0.3), tilt)
 		add(Vector3.new(0.15, 0.36, 0.36), base * CFrame.Angles(0, 0, PI / 2), col, Enum.PartType.Cylinder)
-		add(Vector3.new(0.46, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
+		add(Vector3.new(0.62, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
 		add(Vector3.new(0.08, 0.1, 0.3), base * CFrame.new(0, 0, 0.26), col)
 	end
 
@@ -3962,96 +4147,6 @@ local function unhide(rec, conn)
 		if inst.Parent then inst.Transparency = tr end
 	end
 end
-
------------------------------------------------------------------- GORE POOL
-function S.buildGorePool()
-	local stumpFolder = Instance.new("Folder")
-	stumpFolder.Name = "RickRegenStumps"
-	local goreFolder = Instance.new("Folder")
-	goreFolder.Name = "RickRegenGore"
-	local pool = {
-		stumpFolder = stumpFolder, goreFolder = goreFolder,
-		stumps = {}, sockets = {}, veins = {}, armBones = {},
-	}
-	for _, spec in ipairs(SPEC) do
-		if spec.name ~= "Torso" then
-			pool.stumps[spec.name] = makeStump(stumpFolder, { name = spec.name }, spec.stump, spec.size)
-			pool.sockets[spec.name] = makeStump(stumpFolder, { name = "Torso" }, spec.socket, spec.size, spec.name)
-			local limbVeins = {}
-			for _ = 1, 3 do
-				limbVeins[#limbVeins + 1] = makeVein(goreFolder, nil, spec.stump, nil, spec.socket, "L", rr(0.13, 0.24))
-			end
-			for _ = 1, 2 do
-				limbVeins[#limbVeins + 1] = makeVein(goreFolder, nil, spec.socket, nil, spec.stump, "S", rr(0.10, 0.19))
-			end
-			pool.veins[spec.name] = limbVeins
-			if spec.name == "Right Arm" or spec.name == "Left Arm" then
-				pool.armBones[spec.name] = buildArmBones(goreFolder, 1)
-			elseif spec.name == "Right Leg" or spec.name == "Left Leg" then
-				pool.armBones[spec.name] = buildArmBones(goreFolder, 1.3)
-			elseif spec.name == "Head" then
-				pool.armBones[spec.name] = buildNeckBones(goreFolder, -1, -0.5, 3)
-			end
-		end
-	end
-	pool.chest = buildChest(goreFolder)
-	pool.torsoNeck = buildNeckBones(goreFolder, 1, 1.0, 5)
-	S.gorePool = pool
-	return pool
-end
-
-function S.acquireGorePool(clone, folder)
-	local pool = S.gorePool or S.buildGorePool()
-	local attached = pcall(function()
-		pool.stumpFolder.Parent = clone
-		pool.goreFolder.Parent = folder
-	end)
-	if not attached or pool.stumpFolder.Parent ~= clone or pool.goreFolder.Parent ~= folder then
-		pool = S.buildGorePool()
-		pool.stumpFolder.Parent = clone
-		pool.goreFolder.Parent = folder
-	end
-	return pool
-end
-
-function S.bindStump(stump, piece)
-	stump.piece = piece
-	stump.acc = 0
-	stump.em.Rate = 0
-	showStump(stump, false)
-	return stump
-end
-
-function S.bindVein(vein, src, srcLocal, dst, dstLocal, width)
-	vein.src = src
-	vein.srcLocal = jitter(srcLocal, 0.32)
-	vein.dst = dst
-	vein.dstLocal = jitter(dstLocal, 0.32)
-	vein.width = width
-	vein.mode = "off"
-	vein.t0 = 0
-	vein.dur = 1
-	vein.seed = rr(0, 100)
-	vein.spin = rr(1.2, 2.6) * ((rng:NextNumber() < 0.5) and -1 or 1)
-	vein.wob = rr(0.7, 1.4)
-	vein.snapDist = rr(7, 11)
-	vein.hang = rr(1.6, 3.2)
-	vein.ref = Vector3.new(rr(-1, 1), rr(-1, 1), rr(-1, 1)).Unit
-	vein.tipPos, vein.lastTip, vein.tip0 = nil, nil, nil
-	vein.beam.Enabled = false
-end
-
-function S.resetChest(chest)
-	showChest(chest, false)
-	if chest.heart then
-		chest.heart.part.Size = chest.heart.size
-	end
-	return chest
-end
-
-task.defer(function()
-	if not S.gorePool then pcall(S.buildGorePool) end
-end)
 
 ------------------------------------------------------------------ MAIN
 -- play()					-> old behaviour: explode + regenerate the (alive) character
@@ -4177,32 +4272,33 @@ local function play(deathMode, deadChar)
 		end
 	end
 	local torsoCF0 = torsoP.cf
-	local pool = S.acquireGorePool(clone, folder)
 	for _, p in ipairs(limbs) do
 		p.dirW = (torsoCF0:VectorToWorldSpace(p.spec.dir).Unit + Vector3.new(rr(-0.25, 0.25), rr(0, 0.2), rr(-0.25, 0.25))).Unit
-		p.stump = S.bindStump(pool.stumps[p.name], p)
-		sockets[p.name] = S.bindStump(pool.sockets[p.name], torsoP)
+		p.stump = makeStump(clone, p, p.spec.stump, p.spec.size)
+		sockets[p.name] = makeStump(clone, torsoP, p.spec.socket, p.spec.size, p.name)
 		stumps[#stumps + 1] = p.stump
 		stumps[#stumps + 1] = sockets[p.name]
-		p.veins = pool.veins[p.name]
-		for _, v in ipairs(p.veins) do
-			if v.kind == "L" then
-				S.bindVein(v, p, p.spec.stump, torsoP, p.spec.socket, rr(0.13, 0.24))
-			else
-				S.bindVein(v, torsoP, p.spec.socket, p, p.spec.stump, rr(0.10, 0.19))
-			end
-			veins[#veins + 1] = v
+		for _ = 1, 3 do
+			p.veins[#p.veins + 1] = makeVein(folder, p, p.spec.stump, torsoP, p.spec.socket, "L", rr(0.13, 0.24))
 		end
+		for _ = 1, 2 do
+			p.veins[#p.veins + 1] = makeVein(folder, torsoP, p.spec.socket, p, p.spec.stump, "S", rr(0.10, 0.19))
+		end
+		for _, v in ipairs(p.veins) do veins[#veins + 1] = v end
 	end
 
-	local chest = S.resetChest(pool.chest)
+	local chest = buildChest(folder)
 	local armBones = {} -- every limb's exposed bones, keyed by piece (arms, legs, and the neck stub on the head)
 	for _, ap in ipairs(limbs) do
-		if pool.armBones[ap.name] then
-			armBones[ap] = S.resetChest(pool.armBones[ap.name])
+		if ap.name == "Right Arm" or ap.name == "Left Arm" then
+			armBones[ap] = buildArmBones(folder, 1)
+		elseif ap.name == "Right Leg" or ap.name == "Left Leg" then
+			armBones[ap] = buildArmBones(folder, 1.3)
+		elseif ap.name == "Head" then
+			armBones[ap] = buildNeckBones(folder, -1, -0.5, 3)
 		end
 	end
-	local torsoNeck = S.resetChest(pool.torsoNeck)
+	local torsoNeck = buildNeckBones(folder, 1, 1.0, 5)
 
 	-- hide + freeze the real character -------------------------
 	local hidden, hideConn = {}, nil
@@ -4287,10 +4383,6 @@ local function play(deathMode, deadChar)
 
 	local function fullCleanup()
 		pcall(function() RunService:UnbindFromRenderStep(bindName) end)
-		pcall(function()
-			pool.stumpFolder.Parent = nil
-			pool.goreFolder.Parent = nil
-		end)
 		if clone.Parent then clone:Destroy() end
 		cc:Destroy()
 		blur:Destroy()
@@ -4438,6 +4530,7 @@ local function play(deathMode, deadChar)
 				track:AdjustSpeed(FINALE_ANIMATION_SPEED)
 			end
 		end)
+		rickSay() -- Rick Prime dialogue, the instant every part has slammed together
 		clearRegenSounds() -- accessories are visible again: stop the start sound
 		-- layered finale sounds, all started together (leftovers from an earlier run get wiped first)
 		for _, inst in ipairs(workspace:GetChildren()) do
@@ -4918,7 +5011,6 @@ _G.RickPortal = {
         characterConn:Disconnect()
         closeTargetMenu()
         appearanceConn:Disconnect()
-        fakeHeadWatchActive = false
         if buttonConn then
             buttonConn:Disconnect()
             buttonConn = nil
