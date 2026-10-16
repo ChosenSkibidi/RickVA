@@ -1,0 +1,1955 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/RickPortalStuff"))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local localPlayer = Players.LocalPlayer
+
+local GUN_MODEL_NAME = "RickPrimeGun"
+local GUN_FOLDER_NAME = "RickGun"
+local WELD_NAME = "RickPrimeGunWeld"
+local LEGACY_WIELD_NAME = "RickPrimeGunWield"
+local BASE_SHOULDER_ATTRIBUTE = "RickPrimeGunBaseC0"
+local GUN_ANIMATION_ID = "rbxassetid://80488470577181"
+local GUN_ANIMATION_PRIORITY = Enum.AnimationPriority.Action4
+local GRIP_TILT_ANGLE = math.rad(-16)
+local GUN_ORIGIN_SHIFT = CFrame.new(0, -0.045, -0.315)
+local GUN_SCALE = 0.6
+
+local TRIGGER_ANIM_IDS = {
+	ATTACK = "10468665991",
+}
+local DUMMY_FOLDER_NAME = "Live" -- workspace.Live
+local DUMMY_NAME = "Weakest Dummy" -- workspace.Live["Weakest Dummy"], counts as a target when it's the closest
+local DEBUG_SHOW_REAL_CHARACTER = false -- true = your real character stays visible during the sequence (debug), false = hidden
+local SEQUENCE_TIMEOUT = 5
+local ANIMATION_PAUSE_TIME = 0.3
+local BEHIND_DISTANCE = -5 -- studs past the target, on the far side from where you teleported from
+local LOCK_PREDICT_LATENCY = true -- lead the target by (ping * its velocity) so the server sees us behind it
+local LOCK_MAX_PREDICT_TIME = 0.2 -- seconds, caps the ping used for the lead
+local LOCK_MAX_LEAD = 4 -- studs, caps how far ahead of the target we aim
+local TELEPORT_DELAY = 0.3
+local BEAM_DELAY = 0.6
+local CLONE_LIFETIME = 0.8
+-- ===== Rick Prime pistol VFX settings =====
+-- The look: cold, precise, ruthless. White-hot cores, thin crisp red energy, hard symmetric shapes. Everything snaps in
+-- fast, hits hard and gets out of the way: no soft blobs, no clutter. The pistol model itself is untouched.
+local CHARGE_RED = true -- false = blue version of the whole effect
+local SHAKE_DURATION = 0.5 -- seconds each camera kick lasts
+local SHAKE_POSITION = 0.7 -- studs of random jitter at full kick strength
+local SHAKE_ROTATION = math.rad(4.5)
+local SHAKE_FALLOFF = 1.6 -- lower = the shake stays strong for longer before dying out
+local FOV_ZOOM = 52 -- FOV the camera zooms in to while the pistol charges
+local FOV_BURST = 112 -- FOV the instant the shot fires
+local FOV_ZOOM_TIME = 0.45 -- seconds to zoom in to FOV_ZOOM
+local FOV_RETURN_TIME = 0.55 -- seconds to ease from FOV_BURST back to your normal FOV
+local BEAM_TRAVEL_TIME = 0.1 -- the bolt crosses the gap this fast (it's a pistol shot)...
+local BEAM_HOLD = 0.3 -- ...then the laser trace lingers this long...
+local BEAM_FADE_TIME = 0.15 -- ...and collapses. The three add up to the old 0.55s, so the portal exit still lands at the same moment
+local BEAM_FALLBACK_RANGE = 300
+
+local VFX = {
+	palette = CHARGE_RED
+		and {
+			hot = Color3.fromRGB(255, 240, 244), -- white-hot core
+			bright = Color3.fromRGB(255, 96, 120),
+			red = Color3.fromRGB(255, 30, 60),
+			deep = Color3.fromRGB(150, 6, 30),
+			tint = Color3.fromRGB(255, 214, 222), -- screen grade during the charge
+		}
+		or {
+			hot = Color3.fromRGB(238, 246, 255),
+			bright = Color3.fromRGB(110, 205, 255),
+			red = Color3.fromRGB(45, 140, 255),
+			deep = Color3.fromRGB(10, 46, 170),
+			tint = Color3.fromRGB(214, 228, 255),
+		},
+
+	-- charge-up (converging streaks, collapsing rings, swelling core)
+	streakCount = 42,
+	moteCount = 22,
+	ringCount = 3,
+	ringSegments = 28,
+	ringLife = 0.3,
+	orbiterCount = 3,
+	chargeRadius = 6.5, -- how far out in front of the muzzle the streaks start
+	endRadius = 0.05,
+	coreOffset = 0.2,
+
+	-- lock-on reticle on the target (studs)
+	reticleStart = 20,
+	reticleLock = 7.5,
+	reticleSpin = 150, -- degrees per second while it is still searching
+
+	-- pistol and body motion
+	gunTremor = 0.03, -- the pistol shakes harder as it charges
+	gunPull = 0.07, -- it pulls back a hair right before the shot
+	gunKickBack = 0.5,
+	gunKickPitch = math.rad(15),
+	bodyKick = 0.75, -- studs the shooter is shoved backwards by the recoil
+
+	-- camera
+	dollyIn = 0.8, -- studs the camera creeps forward during the charge
+	chargeRoll = math.rad(1.4),
+	chargeTremor = 0.05,
+	kickBack = 1.0, -- studs the camera is punched back on the shot
+	kickRoll = math.rad(4.5),
+	kickFreq = 24,
+	kickDecay = 6.5,
+	impactFov = 7,
+
+	-- bolt
+	cometLength = 11,
+	speedLineCount = 22,
+
+	-- optional audio hooks: paste a rbxassetid://... here to play a sound at that moment (empty = silent)
+	sounds = {
+		charge = "",
+		fire = "",
+		impact = "",
+		volume = 1.5,
+	},
+}
+
+local COLOR_BODY_NAVY = Color3.fromRGB(10, 16, 34)
+local COLOR_BODY_EDGE = Color3.fromRGB(26, 36, 64)
+local COLOR_REAR_SHELL = Color3.fromRGB(24, 20, 36)
+local COLOR_MUZZLE_GRAY = Color3.fromRGB(62, 68, 78)
+local COLOR_MUZZLE_BEVEL = Color3.fromRGB(83, 95, 110)
+local COLOR_MUZZLE_PLUG = Color3.fromRGB(140, 148, 154)
+local COLOR_LOWER_FRAME = Color3.fromRGB(63, 69, 93)
+local COLOR_FRAME_POCKET = Color3.fromRGB(17, 26, 47)
+local COLOR_RED_PANEL = Color3.fromRGB(150, 26, 29)
+local COLOR_TRIGGER = Color3.fromRGB(167, 175, 179)
+local COLOR_GRIP_NAVY = Color3.fromRGB(21, 22, 34)
+local COLOR_PANEL_BORDER = Color3.fromRGB(52, 55, 73)
+local COLOR_PANEL_SCREEN = Color3.fromRGB(4, 18, 31)
+local COLOR_BASE_BLOCK = Color3.fromRGB(55, 54, 68)
+local COLOR_BASE_PLATE = Color3.fromRGB(62, 63, 74)
+
+local function createGunPart(gunModel, handle, partName, partShape, partSize, partOffset, partColor, partMaterial)
+	local gunPart = Instance.new("Part")
+	gunPart.Name = partName
+	gunPart.Shape = partShape
+	gunPart.Size = partSize * GUN_SCALE
+	gunPart.Color = partColor
+	gunPart.Material = partMaterial
+	gunPart.TopSurface = Enum.SurfaceType.Smooth
+	gunPart.BottomSurface = Enum.SurfaceType.Smooth
+	gunPart.Anchored = false
+	gunPart.CanCollide = false
+	gunPart.CanTouch = false
+	gunPart.CanQuery = false
+	gunPart.Massless = true
+
+	local partWeld = Instance.new("Weld")
+	partWeld.Name = partName .. "Weld"
+	partWeld.Part0 = handle
+	partWeld.Part1 = gunPart
+	local shiftedOffset = GUN_ORIGIN_SHIFT * partOffset
+	partWeld.C0 = CFrame.new(shiftedOffset.Position * GUN_SCALE) * shiftedOffset.Rotation
+	partWeld.Parent = gunPart
+
+	gunPart.Parent = gunModel
+	return gunPart
+end
+
+local function buildGunTemplate()
+	local gunModel = Instance.new("Model")
+	gunModel.Name = GUN_MODEL_NAME
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.2, 0.2, 0.2)
+	handle.Transparency = 1
+	handle.Anchored = false
+	handle.CanCollide = false
+	handle.CanTouch = false
+	handle.CanQuery = false
+	handle.Massless = true
+	handle.Parent = gunModel
+	gunModel.PrimaryPart = handle
+
+	local block = Enum.PartType.Block
+	local cylinder = Enum.PartType.Cylinder
+	local metal = Enum.Material.Metal
+	local neon = Enum.Material.Neon
+	local smoothPlastic = Enum.Material.SmoothPlastic
+
+	local gripTopFrame = CFrame.new(0, 0.55, 0.17) * CFrame.Angles(GRIP_TILT_ANGLE, 0, 0)
+	local lengthwiseAlignment = CFrame.Angles(0, math.rad(90), 0)
+	local sideSigns = { -1, 1 }
+
+	createGunPart(gunModel, handle, "Grip", block, Vector3.new(0.42, 1.05, 0.55), gripTopFrame * CFrame.new(0, -0.525, 0), COLOR_GRIP_NAVY, smoothPlastic)
+	createGunPart(gunModel, handle, "GripBase", block, Vector3.new(0.5, 0.36, 0.8), gripTopFrame * CFrame.new(0, -1.21, 0.04), COLOR_BASE_BLOCK, smoothPlastic)
+	createGunPart(gunModel, handle, "GripBasePlate", block, Vector3.new(0.42, 0.05, 0.62), gripTopFrame * CFrame.new(0, -1.385, 0.04), COLOR_BASE_PLATE, metal)
+
+	for _, sideSign in ipairs(sideSigns) do
+		local sideName = sideSign < 0 and "Left" or "Right"
+		createGunPart(gunModel, handle, "GripPanelBorder" .. sideName, block, Vector3.new(0.02, 0.5, 0.34), gripTopFrame * CFrame.new(sideSign * 0.215, -0.36, 0), COLOR_PANEL_BORDER, smoothPlastic)
+		createGunPart(gunModel, handle, "GripPanelScreen" .. sideName, block, Vector3.new(0.025, 0.4, 0.25), gripTopFrame * CFrame.new(sideSign * 0.218, -0.36, 0), COLOR_PANEL_SCREEN, smoothPlastic)
+	end
+
+	createGunPart(gunModel, handle, "Slide", block, Vector3.new(0.42, 0.5, 1.5), CFrame.new(0, 0.78, -0.55), COLOR_BODY_NAVY, smoothPlastic)
+	createGunPart(gunModel, handle, "RearShell", block, Vector3.new(0.42, 0.46, 0.32), CFrame.new(0, 0.76, 0.36), COLOR_REAR_SHELL, smoothPlastic)
+
+	for _, sideSign in ipairs(sideSigns) do
+		local sideName = sideSign < 0 and "Left" or "Right"
+		createGunPart(gunModel, handle, "SlideEdgeRail" .. sideName, cylinder, Vector3.new(1.82, 0.1, 0.1), CFrame.new(sideSign * 0.16, 1.0, -0.4) * lengthwiseAlignment, COLOR_BODY_EDGE, smoothPlastic)
+		createGunPart(gunModel, handle, "RedPanel" .. sideName, block, Vector3.new(0.03, 0.26, 0.6), CFrame.new(sideSign * 0.215, 0.88, -0.1), COLOR_RED_PANEL, neon)
+		createGunPart(gunModel, handle, "FramePocket" .. sideName, block, Vector3.new(0.02, 0.1, 0.8), CFrame.new(sideSign * 0.225, 0.43, -0.72), COLOR_FRAME_POCKET, smoothPlastic)
+	end
+
+	createGunPart(gunModel, handle, "RedPanelTop", block, Vector3.new(0.2, 0.03, 0.6), CFrame.new(0, 1.04, -0.1), COLOR_RED_PANEL, neon)
+	createGunPart(gunModel, handle, "LowerFrame", block, Vector3.new(0.44, 0.2, 1.25), CFrame.new(0, 0.43, -0.72), COLOR_LOWER_FRAME, smoothPlastic)
+
+	createGunPart(gunModel, handle, "MuzzleBlock", block, Vector3.new(0.5, 0.62, 0.5), CFrame.new(0, 0.78, -1.55), COLOR_MUZZLE_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "MuzzleTopBevel", block, Vector3.new(0.5, 0.05, 0.5), CFrame.new(0, 1.115, -1.55), COLOR_MUZZLE_BEVEL, smoothPlastic)
+	createGunPart(gunModel, handle, "MuzzleFrontChamfer", block, Vector3.new(0.5, 0.05, 0.22), CFrame.new(0, 1.07, -1.76) * CFrame.Angles(math.rad(-40), 0, 0), COLOR_MUZZLE_BEVEL, smoothPlastic)
+	createGunPart(gunModel, handle, "MuzzlePlug", cylinder, Vector3.new(0.12, 0.24, 0.24), CFrame.new(0, 0.85, -1.84) * lengthwiseAlignment, COLOR_MUZZLE_PLUG, metal)
+
+	local triggerCenterY = 0.4
+	local triggerCenterZ = -0.3
+	local triggerRadius = 0.14
+	local triggerSegmentCount = 8
+	local triggerStartAngle = math.rad(200)
+	local triggerEndAngle = math.rad(340)
+
+	for segmentIndex = 0, triggerSegmentCount - 1 do
+		local arcProgress = segmentIndex / (triggerSegmentCount - 1)
+		local arcAngle = triggerStartAngle + (triggerEndAngle - triggerStartAngle) * arcProgress
+		local segmentY = triggerCenterY + triggerRadius * math.sin(arcAngle)
+		local segmentZ = triggerCenterZ + triggerRadius * math.cos(arcAngle)
+		local segmentTilt = math.atan2(-math.cos(arcAngle), -math.sin(arcAngle))
+		createGunPart(gunModel, handle, "TriggerSegment" .. segmentIndex, block, Vector3.new(0.1, 0.045, 0.075), CFrame.new(0, segmentY, segmentZ) * CFrame.Angles(segmentTilt, 0, 0), COLOR_TRIGGER, smoothPlastic)
+	end
+
+	return gunModel
+end
+
+-- pre-built once: ReplicatedStorage.RickGun holds the gun model, cloned whenever we need it
+local gunFolder = ReplicatedStorage:FindFirstChild(GUN_FOLDER_NAME) or Instance.new("Folder")
+gunFolder.Name = GUN_FOLDER_NAME
+gunFolder.Parent = ReplicatedStorage
+local oldGunTemplate = gunFolder:FindFirstChild(GUN_MODEL_NAME)
+if oldGunTemplate then
+	oldGunTemplate:Destroy()
+end
+local gunTemplate = buildGunTemplate()
+gunTemplate.Parent = gunFolder
+
+local function attachGun(targetArm)
+	for _, leftoverName in ipairs({ GUN_MODEL_NAME, WELD_NAME, LEGACY_WIELD_NAME }) do
+		local leftoverInstance = targetArm:FindFirstChild(leftoverName)
+		if leftoverInstance then
+			leftoverInstance:Destroy()
+		end
+	end
+
+	local gunModel = gunTemplate:Clone()
+
+	local armWeld = Instance.new("Weld")
+	armWeld.Name = WELD_NAME
+	armWeld.Part0 = targetArm
+	armWeld.Part1 = gunModel.PrimaryPart
+	armWeld.C0 = CFrame.new(0, -1, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+	armWeld.C1 = CFrame.new()
+	armWeld.Parent = targetArm
+
+	gunModel.Parent = targetArm
+
+	return gunModel
+end
+
+local function playGunAnimation(humanoid)
+	local animator = humanoid:WaitForChild("Animator")
+
+	for _, playingTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+		if playingTrack.Animation and playingTrack.Animation.AnimationId == GUN_ANIMATION_ID then
+			playingTrack:Stop(0)
+		end
+	end
+
+	local gunAnimation = Instance.new("Animation")
+	gunAnimation.AnimationId = GUN_ANIMATION_ID
+
+	local gunAnimationTrack = animator:LoadAnimation(gunAnimation)
+	gunAnimationTrack.Priority = GUN_ANIMATION_PRIORITY
+	gunAnimationTrack:Play()
+
+	local pauseConnection
+	pauseConnection = RunService.Heartbeat:Connect(function()
+		if not gunAnimationTrack.IsPlaying then
+			pauseConnection:Disconnect()
+		elseif gunAnimationTrack.TimePosition >= ANIMATION_PAUSE_TIME then
+			pauseConnection:Disconnect()
+			gunAnimationTrack.TimePosition = ANIMATION_PAUSE_TIME
+			gunAnimationTrack:AdjustSpeed(0)
+		end
+	end)
+
+	return gunAnimationTrack
+end
+
+local function resumeGunAnimation(humanoid, timePosition)
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	local gunAnimation = Instance.new("Animation")
+	gunAnimation.AnimationId = GUN_ANIMATION_ID
+
+	local gunAnimationTrack = animator:LoadAnimation(gunAnimation)
+	gunAnimationTrack.Priority = GUN_ANIMATION_PRIORITY
+	gunAnimationTrack:Play(0)
+	gunAnimationTrack.TimePosition = timePosition
+end
+
+-- ===== Rick Prime pistol VFX library =====
+local FX = {}
+FX.rng = Random.new()
+
+function FX.part(parent, shape, color, transparency, size, cframe)
+	local part = Instance.new("Part")
+	part.Shape = shape
+	part.Material = Enum.Material.Neon
+	part.Color = color
+	part.Transparency = transparency
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.CastShadow = false
+	part.Parent = parent
+	return part
+end
+
+function FX.tween(instance, duration, properties, style, direction)
+	local tween = TweenService:Create(instance, TweenInfo.new(duration, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), properties)
+	tween:Play()
+	return tween
+end
+
+-- CFrame.lookAt that survives a straight-up / straight-down direction
+function FX.facing(position, direction)
+	local up = math.abs(direction.Unit.Y) > 0.98 and Vector3.zAxis or Vector3.yAxis
+	return CFrame.lookAt(position, position + direction, up)
+end
+
+function FX.sound(soundId, parent)
+	if not soundId or soundId == "" then
+		return
+	end
+	local sound = Instance.new("Sound")
+	sound.SoundId = soundId
+	sound.Volume = VFX.sounds.volume
+	sound.Parent = parent
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+	sound:Play()
+	task.delay(10, function()
+		if sound.Parent then
+			sound:Destroy()
+		end
+	end)
+end
+
+-- runs step(alpha, elapsed) every frame for `duration`; stops by itself if `owner` is destroyed
+function FX.run(owner, duration, step, onDone)
+	local startTime = os.clock()
+	local connection
+	connection = RunService.PreRender:Connect(function()
+		if owner and not owner.Parent then
+			connection:Disconnect()
+			return
+		end
+		local elapsed = os.clock() - startTime
+		local alpha = math.clamp(elapsed / duration, 0, 1)
+		local ok, err = pcall(step, alpha, elapsed)
+		if not ok then
+			warn("[RickPrimeGun] vfx error:", err)
+			connection:Disconnect()
+			return
+		end
+		if alpha >= 1 then
+			connection:Disconnect()
+			if onDone then
+				onDone()
+			end
+		end
+	end)
+	return connection
+end
+
+-- a circle built from thin neon segments (crisp at any radius), lying in the XY plane of the frame you give it
+function FX.newRing(parent, segmentCount, color)
+	local ring = { count = segmentCount, segments = {} }
+	for index = 1, segmentCount do
+		ring.segments[index] = FX.part(parent, Enum.PartType.Block, color, 1, Vector3.new(0.1, 0.05, 0.05), CFrame.new())
+	end
+	return ring
+end
+
+function FX.setRing(ring, frame, radius, thickness, transparency, spin)
+	local count = ring.count
+	local chord = 2 * radius * math.sin(math.pi / count) * 1.1 + thickness
+	for index, segment in ipairs(ring.segments) do
+		local angle = spin + index / count * 2 * math.pi
+		segment.Size = Vector3.new(chord, thickness, thickness)
+		segment.CFrame = frame * CFrame.Angles(0, 0, angle) * CFrame.new(radius, 0, 0) * CFrame.Angles(0, 0, math.pi / 2)
+		segment.Transparency = transparency
+	end
+end
+
+function FX.destroyRing(ring)
+	for _, segment in ipairs(ring.segments) do
+		segment:Destroy()
+	end
+	table.clear(ring.segments)
+end
+
+-- expanding (or, with easeIn, collapsing) ring that fades out by itself
+function FX.shockRing(owner, frame, options)
+	local ring = FX.newRing(owner, options.segments or 32, options.color)
+	local startTransparency = options.startTransparency or 0
+	FX.run(owner, options.duration, function(alpha)
+		local eased, thickness, transparency
+		if options.easeIn then
+			eased = alpha ^ 2.2
+			thickness = options.thickness * (0.35 + 0.65 * math.sin(math.pi * alpha))
+			transparency = 1 - (1 - startTransparency) * math.sin(math.pi * alpha) ^ 0.5
+		else
+			eased = 1 - (1 - alpha) ^ 3
+			thickness = options.thickness * (1 - 0.85 * alpha)
+			transparency = startTransparency + (1 - startTransparency) * alpha ^ 1.4
+		end
+		local radius = options.startRadius + (options.endRadius - options.startRadius) * eased
+		FX.setRing(ring, frame, radius, math.max(thickness, 0.02), transparency, 0)
+	end, function()
+		FX.destroyRing(ring)
+	end)
+end
+
+-- invisible anchored part carrying an attachment, for Beam endpoints
+function FX.node(parent)
+	local part = Instance.new("Part")
+	part.Name = "Node"
+	part.Transparency = 1
+	part.Size = Vector3.new(0.05, 0.05, 0.05)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CanQuery = false
+	part.CastShadow = false
+	part.Parent = parent
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = part
+	return part, attachment
+end
+
+function FX.beam(parent, attachment0, attachment1, color, width0, width1, transparency, zOffset)
+	local beam = Instance.new("Beam")
+	beam.Attachment0 = attachment0
+	beam.Attachment1 = attachment1
+	beam.FaceCamera = true
+	beam.LightEmission = 1
+	beam.LightInfluence = 0
+	beam.Segments = 1
+	beam.Width0 = width0
+	beam.Width1 = width1
+	beam.Color = color
+	beam.Transparency = transparency
+	beam.ZOffset = zOffset or 0
+	beam.Parent = parent
+	return beam
+end
+
+function FX.trail(head, width, lifetime, midColor)
+	local attachment0, attachment1 = Instance.new("Attachment"), Instance.new("Attachment")
+	attachment0.Position = Vector3.new(0, width / 2, 0)
+	attachment1.Position = Vector3.new(0, -width / 2, 0)
+	attachment0.Parent, attachment1.Parent = head, head
+	local trail = Instance.new("Trail")
+	trail.Attachment0, trail.Attachment1 = attachment0, attachment1
+	trail.Lifetime = lifetime
+	trail.LightEmission = 1
+	trail.LightInfluence = 0
+	trail.FaceCamera = true
+	trail.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0.18, midColor),
+		ColorSequenceKeypoint.new(1, VFX.palette.deep),
+	})
+	trail.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.45, 0.3),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+	trail.Parent = head
+	return trail
+end
+
+-- one-shot spark / smoke burst out of a part's front face (-Z)
+function FX.burst(parent, count, config)
+	local palette = VFX.palette
+	local lifetime = config.lifetime or NumberRange.new(0.2, 0.45)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Enabled = false
+	emitter.Rate = 0
+	if config.texture then
+		emitter.Texture = config.texture
+	end
+	emitter.LightEmission = config.lightEmission or 1
+	emitter.LightInfluence = 0
+	emitter.Color = config.color or ColorSequence.new({
+		ColorSequenceKeypoint.new(0, palette.hot),
+		ColorSequenceKeypoint.new(0.35, palette.bright),
+		ColorSequenceKeypoint.new(1, palette.deep),
+	})
+	emitter.Size = config.size or NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 0) })
+	emitter.Transparency = config.transparency or NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.7, 0.15),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Lifetime = lifetime
+	emitter.Speed = config.speed or NumberRange.new(30, 70)
+	emitter.SpreadAngle = config.spread or Vector2.new(20, 20)
+	emitter.Acceleration = config.acceleration or Vector3.new(0, -40, 0)
+	emitter.Drag = config.drag or 1.5
+	emitter.Rotation = NumberRange.new(0, 360)
+	emitter.EmissionDirection = Enum.NormalId.Front
+	emitter.Parent = parent
+	emitter:Emit(count)
+	task.delay(lifetime.Max + 0.3, function()
+		emitter:Destroy()
+	end)
+	return emitter
+end
+
+function FX.ignoreList(...)
+	local list = {}
+	for index = 1, select("#", ...) do
+		local instance = select(index, ...)
+		if instance then
+			table.insert(list, instance)
+		end
+	end
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer.Character then
+			table.insert(list, otherPlayer.Character)
+		end
+	end
+	return list
+end
+
+function FX.floorAt(position, ignoreList)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.RespectCanCollide = true
+	rayParams.FilterDescendantsInstances = ignoreList
+	return workspace:Raycast(position + Vector3.new(0, 3, 0), Vector3.new(0, -60, 0), rayParams)
+end
+
+-- Camera: slow creep + zoom + tremor while charging, a hard punch-back with FOV burst on the shot, a smaller punch on impact.
+-- It owns the render step that used to live inside runSequence.
+function FX.camera(bindName, camera, baseCFrame, savedFov, zoomStart, chargeDuration)
+	local rig = {}
+	local seed = FX.rng:NextNumber(1, 90)
+	local rollSign = FX.rng:NextNumber() < 0.5 and -1 or 1
+	local fireTime, impactTime
+	local kicks = {}
+
+	function rig.fire()
+		fireTime = os.clock()
+		table.insert(kicks, { time = fireTime, strength = 1, roll = rollSign })
+	end
+
+	function rig.impact()
+		impactTime = os.clock()
+		table.insert(kicks, { time = impactTime, strength = 0.6, roll = -rollSign })
+	end
+
+	local function wobble(now, offset)
+		return math.noise(now * 34, seed + offset, 0.5) * 2
+	end
+
+	local function jitter(amount)
+		return (math.random() - 0.5) * 2 * amount
+	end
+
+	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Last.Value, function()
+		camera.CameraType = Enum.CameraType.Scriptable
+		local now = os.clock()
+
+		-- FOV: smooth zoom in while charging, instant burst on the shot, smooth ease back, tiny punch-in on impact
+		local fov
+		if fireTime then
+			local fovAlpha = math.clamp((now - fireTime) / FOV_RETURN_TIME, 0, 1)
+			fov = FOV_BURST + (savedFov - FOV_BURST) * (1 - (1 - fovAlpha) ^ 3)
+		else
+			local fovAlpha = math.clamp((now - zoomStart) / FOV_ZOOM_TIME, 0, 1)
+			fov = savedFov + (FOV_ZOOM - savedFov) * (1 - (1 - fovAlpha) ^ 3)
+		end
+		if impactTime then
+			fov -= VFX.impactFov * (1 - math.clamp((now - impactTime) / 0.3, 0, 1)) ^ 2
+		end
+		camera.FieldOfView = fov
+
+		local progress = math.clamp((now - zoomStart) / chargeDuration, 0, 1)
+		local lean = progress ^ 2 -- creep forward + a slight dutch angle while charging, eased back out after the shot
+		if fireTime then
+			lean = (1 - math.clamp((now - fireTime) / 0.5, 0, 1)) ^ 2
+		end
+		local tremor = fireTime and 0 or progress ^ 3 * VFX.chargeTremor
+
+		local kickBack, kickRoll, kickShake = 0, 0, 0
+		for _, kick in ipairs(kicks) do
+			local age = now - kick.time
+			if age < SHAKE_DURATION then
+				local decay = math.exp(-age * VFX.kickDecay)
+				kickBack += kick.strength * decay * math.cos(age * VFX.kickFreq)
+				kickRoll += kick.strength * kick.roll * decay * math.cos(age * VFX.kickFreq * 0.55)
+				kickShake += kick.strength * (1 - age / SHAKE_DURATION) ^ SHAKE_FALLOFF
+			end
+		end
+		local jitterPosition = SHAKE_POSITION * kickShake
+		local jitterRotation = SHAKE_ROTATION * kickShake
+
+		camera.CFrame = baseCFrame
+			* CFrame.new(
+				wobble(now, 1) * tremor + jitter(jitterPosition),
+				wobble(now, 2) * tremor + jitter(jitterPosition),
+				-VFX.dollyIn * lean + kickBack * VFX.kickBack
+			)
+			* CFrame.Angles(
+				wobble(now, 3) * tremor * 0.6 + jitter(jitterRotation),
+				wobble(now, 4) * tremor * 0.6 + jitter(jitterRotation),
+				VFX.chargeRoll * rollSign * lean + kickRoll * VFX.kickRoll + jitter(jitterRotation)
+			)
+	end)
+
+	return rig
+end
+
+-- Screen layer: red vignette + contrast grade while charging, white flash / blur pulse / speed lines on the shot.
+function FX.screen(camera)
+	local palette = VFX.palette
+	local lighting = game:GetService("Lighting")
+	local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+	local screen = {}
+	local destroyed = false
+	local edges = {}
+	local gui, flashFrame, lineHolder
+
+	local grade = Instance.new("ColorCorrectionEffect")
+	grade.Name = "RickPrimeGrade"
+	grade.Parent = lighting
+	local blur = Instance.new("BlurEffect")
+	blur.Name = "RickPrimeBlur"
+	blur.Size = 0
+	blur.Parent = lighting
+
+	if playerGui then
+		gui = Instance.new("ScreenGui")
+		gui.Name = "RickPrimeShotGui"
+		gui.IgnoreGuiInset = true
+		gui.ScreenInsets = Enum.ScreenInsets.None
+		gui.ResetOnSpawn = false
+		gui.DisplayOrder = 50
+		gui.Parent = playerGui
+
+		local function addEdge(anchor, position, size, rotation)
+			local frame = Instance.new("Frame")
+			frame.AnchorPoint = anchor
+			frame.Position = position
+			frame.Size = size
+			frame.BorderSizePixel = 0
+			frame.BackgroundColor3 = palette.deep:Lerp(Color3.new(0, 0, 0), 0.82)
+			frame.BackgroundTransparency = 1
+			frame.ZIndex = 1
+			local gradient = Instance.new("UIGradient")
+			gradient.Rotation = rotation
+			gradient.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) })
+			gradient.Parent = frame
+			frame.Parent = gui
+			table.insert(edges, frame)
+		end
+		addEdge(Vector2.new(0, 0), UDim2.fromScale(0, 0), UDim2.fromScale(0.28, 1), 0) -- left
+		addEdge(Vector2.new(1, 0), UDim2.fromScale(1, 0), UDim2.fromScale(0.28, 1), 180) -- right
+		addEdge(Vector2.new(0, 0), UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.32), 90) -- top
+		addEdge(Vector2.new(0, 1), UDim2.fromScale(0, 1), UDim2.fromScale(1, 0.32), 270) -- bottom
+
+		lineHolder = Instance.new("Frame")
+		lineHolder.BackgroundTransparency = 1
+		lineHolder.BorderSizePixel = 0
+		lineHolder.Size = UDim2.fromScale(1, 1)
+		lineHolder.ZIndex = 3
+		lineHolder.Parent = gui
+
+		flashFrame = Instance.new("Frame")
+		flashFrame.BackgroundColor3 = Color3.new(1, 1, 1)
+		flashFrame.BackgroundTransparency = 1
+		flashFrame.BorderSizePixel = 0
+		flashFrame.Size = UDim2.fromScale(1, 1)
+		flashFrame.ZIndex = 5
+		flashFrame.Parent = gui
+	end
+
+	function screen.setCharge(progress)
+		if destroyed then
+			return
+		end
+		local strength = progress ^ 1.5
+		for _, edge in ipairs(edges) do
+			edge.BackgroundTransparency = 1 - 0.55 * strength
+		end
+		grade.Saturation = 0.15 * strength
+		grade.Contrast = 0.12 * strength
+		grade.TintColor = Color3.new(1, 1, 1):Lerp(palette.tint, 0.55 * strength)
+	end
+
+	function screen.release()
+		if destroyed then
+			return
+		end
+		for _, edge in ipairs(edges) do
+			FX.tween(edge, 0.5, { BackgroundTransparency = 1 })
+		end
+		FX.tween(grade, 0.5, { Saturation = 0, Contrast = 0, TintColor = Color3.new(1, 1, 1) })
+	end
+
+	function screen.flash(strength, duration, color, blurSize)
+		if destroyed then
+			return
+		end
+		if flashFrame then
+			flashFrame.BackgroundColor3 = color
+			flashFrame.BackgroundTransparency = 1 - strength
+			FX.tween(flashFrame, duration, { BackgroundTransparency = 1 })
+		end
+		grade.Brightness = 0.18 * strength
+		FX.tween(grade, duration * 1.4, { Brightness = 0 })
+		blur.Size = blurSize
+		FX.tween(blur, duration * 1.6, { Size = 0 })
+	end
+
+	function screen.speedLines()
+		if destroyed or not lineHolder then
+			return
+		end
+		local viewport = camera.ViewportSize
+		local center = viewport / 2
+		local maxRadius = viewport.Magnitude / 2
+		for index = 1, VFX.speedLineCount do
+			local angle = index / VFX.speedLineCount * 2 * math.pi + FX.rng:NextNumber(-0.09, 0.09)
+			local direction = Vector2.new(math.cos(angle), math.sin(angle))
+			local length = FX.rng:NextNumber(0.22, 0.42) * maxRadius
+			local inner = FX.rng:NextNumber(0.34, 0.55) * maxRadius
+			local startPosition = center + direction * (inner + length * 0.25)
+			local endPosition = center + direction * (inner + length * 0.9)
+
+			local line = Instance.new("Frame")
+			line.BorderSizePixel = 0
+			line.BackgroundColor3 = index % 3 == 0 and palette.bright or palette.hot
+			line.BackgroundTransparency = 0.25
+			line.AnchorPoint = Vector2.new(0.5, 0.5)
+			line.Rotation = math.deg(angle) - 90
+			line.Size = UDim2.fromOffset(FX.rng:NextNumber(2, 4), length * 0.5)
+			line.Position = UDim2.fromOffset(startPosition.X, startPosition.Y)
+			line.Parent = lineHolder
+
+			local life = FX.rng:NextNumber(0.2, 0.32)
+			FX.tween(line, life, {
+				Position = UDim2.fromOffset(endPosition.X, endPosition.Y),
+				Size = UDim2.fromOffset(1, length),
+				BackgroundTransparency = 1,
+			})
+			task.delay(life + 0.05, function()
+				line:Destroy()
+			end)
+		end
+	end
+
+	-- the shot: hard white flash, blur pulse, speed lines, charge grade released
+	function screen.fire()
+		screen.flash(0.5, 0.2, palette.hot, 12)
+		screen.speedLines()
+		screen.release()
+	end
+
+	function screen.impact()
+		screen.flash(0.25, 0.14, palette.red, 6)
+	end
+
+	function screen.destroy()
+		if destroyed then
+			return
+		end
+		destroyed = true
+		if gui then
+			gui:Destroy()
+		end
+		grade:Destroy()
+		blur:Destroy()
+	end
+
+	task.delay(8, screen.destroy) -- safety net so the grade can never get stuck on
+	return screen
+end
+
+-- Lock-on reticle: big rotating ring + corner brackets that tighten onto the target and snap shut right before the shot.
+function FX.reticle(parent, targetRoot)
+	local palette = VFX.palette
+	local reticle = {}
+	local angle = 0
+	local lastTime = os.clock()
+	local lockTime
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "RickPrimeReticle"
+	gui.Adornee = targetRoot
+	gui.AlwaysOnTop = true
+	gui.LightInfluence = 0
+	gui.Size = UDim2.fromScale(VFX.reticleStart, VFX.reticleStart) -- scale = studs on a BillboardGui
+	gui.Parent = parent
+
+	local function makeFrame(parentFrame, size)
+		local frame = Instance.new("Frame")
+		frame.BackgroundTransparency = 1
+		frame.BorderSizePixel = 0
+		frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		frame.Position = UDim2.fromScale(0.5, 0.5)
+		frame.Size = size
+		frame.Parent = parentFrame
+		return frame
+	end
+
+	local spinFrame = makeFrame(gui, UDim2.fromScale(1, 1))
+	local bracketFrame = makeFrame(gui, UDim2.fromScale(1, 1))
+
+	local ring = makeFrame(spinFrame, UDim2.fromScale(0.82, 0.82))
+	local ringCorner = Instance.new("UICorner")
+	ringCorner.CornerRadius = UDim.new(0.5, 0)
+	ringCorner.Parent = ring
+	local ringStroke = Instance.new("UIStroke")
+	ringStroke.Thickness = 2
+	ringStroke.Color = palette.red
+	ringStroke.Transparency = 1
+	ringStroke.Parent = ring
+
+	local solids = {} -- every filled piece, so they can be faded together
+	local function addSolid(parentFrame, anchor, position, size)
+		local frame = Instance.new("Frame")
+		frame.BorderSizePixel = 0
+		frame.BackgroundColor3 = palette.hot
+		frame.BackgroundTransparency = 1
+		frame.AnchorPoint = anchor
+		frame.Position = position
+		frame.Size = size
+		frame.Parent = parentFrame
+		table.insert(solids, frame)
+		return frame
+	end
+
+	for _, corner in ipairs({ { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } }) do
+		local anchor = Vector2.new(corner[1], corner[2])
+		local position = UDim2.fromScale(corner[1], corner[2])
+		addSolid(bracketFrame, anchor, position, UDim2.new(0.2, 0, 0, 3))
+		addSolid(bracketFrame, anchor, position, UDim2.new(0, 3, 0.2, 0))
+	end
+	local dot = addSolid(gui, Vector2.new(0.5, 0.5), UDim2.fromScale(0.5, 0.5), UDim2.fromOffset(6, 6))
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(0.5, 0)
+	dotCorner.Parent = dot
+
+	function reticle.update(progress, now)
+		local deltaTime = now - lastTime
+		lastTime = now
+
+		local lockProgress = math.clamp(progress / 0.8, 0, 1)
+		local size = VFX.reticleLock + (VFX.reticleStart - VFX.reticleLock) * (1 - lockProgress ^ 2.6)
+
+		-- the instant it locks: the ring snaps thick and white, with a quick pop
+		local pop = 1
+		if lockProgress >= 1 then
+			lockTime = lockTime or now
+			pop = 1 + 0.2 * math.exp(-(now - lockTime) * 16)
+			ringStroke.Color = palette.hot
+			ringStroke.Thickness = 3.5
+		else
+			ringStroke.Color = palette.red:Lerp(palette.bright, lockProgress)
+		end
+		gui.Size = UDim2.fromScale(size * pop, size * pop)
+
+		angle += deltaTime * VFX.reticleSpin * (1 - lockProgress * 0.9)
+		spinFrame.Rotation = angle
+		bracketFrame.Rotation = -angle * 0.6
+
+		local fade = math.clamp(progress / 0.12, 0, 1)
+		ringStroke.Transparency = 1 - fade
+		for _, solid in ipairs(solids) do
+			solid.BackgroundTransparency = 1 - fade
+		end
+	end
+
+	function reticle.collapse()
+		FX.tween(gui, 0.14, { Size = UDim2.fromScale(VFX.reticleLock * 0.35, VFX.reticleLock * 0.35) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		FX.tween(ringStroke, 0.14, { Transparency = 1 })
+		for _, solid in ipairs(solids) do
+			FX.tween(solid, 0.14, { BackgroundTransparency = 1 })
+		end
+		task.delay(0.25, function()
+			gui:Destroy()
+		end)
+	end
+
+	task.delay(6, function() -- safety net
+		if gui.Parent then
+			gui:Destroy()
+		end
+	end)
+
+	return reticle
+end
+
+-- Muzzle blast: white flash, hard flash rays, shock ring and a spark spray, all aimed down the bolt.
+function FX.muzzleBurst(owner, origin, direction)
+	local palette = VFX.palette
+	local rng = FX.rng
+	local ball = Enum.PartType.Ball
+	local block = Enum.PartType.Block
+	local frame = FX.facing(origin, direction)
+
+	local flash = FX.part(owner, ball, palette.hot, 0, Vector3.one * 0.7, CFrame.new(origin))
+	FX.tween(flash, 0.11, { Transparency = 1, Size = Vector3.one * 3.2 })
+	local halo = FX.part(owner, ball, palette.red, 0.35, Vector3.one * 1.2, CFrame.new(origin))
+	FX.tween(halo, 0.16, { Transparency = 1, Size = Vector3.one * 5.2 })
+	local light = Instance.new("PointLight")
+	light.Color = palette.bright
+	light.Brightness = 9
+	light.Range = 26
+	light.Shadows = false
+	light.Parent = flash
+	FX.tween(light, 0.2, { Brightness = 0 })
+	task.delay(0.3, function()
+		flash:Destroy()
+		halo:Destroy()
+	end)
+
+	-- flash rays fanning out of the barrel: narrow ones are long, wide ones are short
+	local rayCount = 9
+	for index = 1, rayCount do
+		local azimuth = index / rayCount * 2 * math.pi + rng:NextNumber(-0.2, 0.2)
+		local spread = rng:NextNumber(math.rad(6), math.rad(34))
+		local length = rng:NextNumber(3.2, 7.5) * (1.15 - spread / math.rad(60))
+		local localDirection = Vector3.new(math.sin(spread) * math.cos(azimuth), math.sin(spread) * math.sin(azimuth), -math.cos(spread))
+		local worldDirection = frame:VectorToWorldSpace(localDirection)
+		local grownLength = length * 1.5
+		local ray = FX.part(
+			owner,
+			block,
+			index % 2 == 0 and palette.hot or palette.bright,
+			0,
+			Vector3.new(0.09, 0.09, length),
+			CFrame.lookAt(origin + worldDirection * (length / 2), origin + worldDirection * length)
+		)
+		FX.tween(ray, 0.09 + rng:NextNumber(0, 0.04), {
+			Transparency = 1,
+			Size = Vector3.new(0.01, 0.01, grownLength),
+			CFrame = CFrame.lookAt(origin + worldDirection * (grownLength / 2), origin + worldDirection * grownLength),
+		})
+		task.delay(0.3, function()
+			ray:Destroy()
+		end)
+	end
+
+	-- one long spike straight down the bolt
+	local spike = FX.part(owner, block, palette.hot, 0, Vector3.new(0.16, 0.16, 11), CFrame.lookAt(origin + direction * 5.5, origin + direction * 11))
+	FX.tween(spike, 0.12, {
+		Transparency = 1,
+		Size = Vector3.new(0.01, 0.01, 17),
+		CFrame = CFrame.lookAt(origin + direction * 8.5, origin + direction * 17),
+	})
+	task.delay(0.3, function()
+		spike:Destroy()
+	end)
+
+	-- shock ring blown off the muzzle
+	FX.shockRing(owner, FX.facing(origin + direction * 0.25, direction), {
+		startRadius = 0.2,
+		endRadius = 3.8,
+		duration = 0.18,
+		thickness = 0.16,
+		color = palette.hot,
+		segments = 28,
+		startTransparency = 0,
+	})
+
+	-- sparks + a thin wisp of smoke off the barrel
+	local proxy = FX.part(owner, block, palette.hot, 1, Vector3.new(0.1, 0.1, 0.1), frame)
+	FX.burst(proxy, 44, { speed = NumberRange.new(40, 95), spread = Vector2.new(24, 24), lifetime = NumberRange.new(0.18, 0.42) })
+	FX.burst(proxy, 14, { speed = NumberRange.new(8, 24), spread = Vector2.new(75, 75), lifetime = NumberRange.new(0.15, 0.3), size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.35), NumberSequenceKeypoint.new(1, 0) }) })
+	FX.burst(proxy, 4, {
+		texture = "rbxasset://textures/particles/smoke_main.dds",
+		lightEmission = 0.2,
+		color = ColorSequence.new(Color3.fromRGB(70, 56, 64)),
+		size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1.6) }),
+		transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) }),
+		lifetime = NumberRange.new(0.6, 1),
+		speed = NumberRange.new(2, 6),
+		spread = Vector2.new(35, 35),
+		acceleration = Vector3.new(0, 3, 0),
+		drag = 3,
+	})
+end
+
+-- Impact: white flash + star flare, shock rings (one face-on, one along the floor), sparks, and a red hit-flash on the target.
+function FX.impact(owner, position, direction, targetModel, ignoreList)
+	local palette = VFX.palette
+	local ball = Enum.PartType.Ball
+	local block = Enum.PartType.Block
+	local frame = FX.facing(position, direction)
+
+	local flash = FX.part(owner, ball, palette.hot, 0, Vector3.one * 1.4, CFrame.new(position))
+	FX.tween(flash, 0.14, { Transparency = 1, Size = Vector3.one * 8 })
+	local core = FX.part(owner, ball, palette.red, 0.25, Vector3.one * 0.8, CFrame.new(position))
+	FX.tween(core, 0.28, { Transparency = 1, Size = Vector3.one * 5.5 })
+	local light = Instance.new("PointLight")
+	light.Color = palette.bright
+	light.Brightness = 10
+	light.Range = 28
+	light.Shadows = false
+	light.Parent = flash
+	FX.tween(light, 0.3, { Brightness = 0 })
+	task.delay(0.4, function()
+		flash:Destroy()
+		core:Destroy()
+	end)
+
+	-- star flare, face-on to the shooter: two long blades, two short diagonals
+	for index = 0, 3 do
+		local length = index % 2 == 0 and 15 or 8
+		local blade = FX.part(
+			owner,
+			block,
+			index % 2 == 0 and palette.hot or palette.bright,
+			0.05,
+			Vector3.new(length * 0.25, 0.3, 0.3),
+			frame * CFrame.Angles(0, 0, index * math.pi / 4)
+		)
+		FX.tween(blade, 0.22, { Transparency = 1, Size = Vector3.new(length, 0.02, 0.02) })
+		task.delay(0.3, function()
+			blade:Destroy()
+		end)
+	end
+
+	FX.shockRing(owner, frame, { startRadius = 0.8, endRadius = 9, duration = 0.32, thickness = 0.3, color = palette.hot, segments = 40, startTransparency = 0.05 })
+	task.delay(0.05, function()
+		if owner.Parent then
+			FX.shockRing(owner, frame, { startRadius = 0.5, endRadius = 6, duration = 0.28, thickness = 0.22, color = palette.red, segments = 36, startTransparency = 0.1 })
+		end
+	end)
+
+	-- shockwave along the floor under the target
+	local floorHit = FX.floorAt(position, ignoreList)
+	if floorHit and (position - floorHit.Position).Magnitude < 14 then
+		local floorFrame = FX.facing(floorHit.Position + floorHit.Normal * 0.15, floorHit.Normal)
+		FX.shockRing(owner, floorFrame, { startRadius = 0.8, endRadius = 15, duration = 0.5, thickness = 0.5, color = palette.red, segments = 44, startTransparency = 0.05 })
+		FX.shockRing(owner, floorFrame, { startRadius = 0.4, endRadius = 8.5, duration = 0.34, thickness = 0.3, color = palette.hot, segments = 40, startTransparency = 0.1 })
+	end
+
+	-- sparks thrown back at the shooter, plus a loose all-round spray
+	local proxy = FX.part(owner, block, palette.hot, 1, Vector3.new(0.1, 0.1, 0.1), FX.facing(position, -direction))
+	FX.burst(proxy, 48, { speed = NumberRange.new(28, 72), spread = Vector2.new(70, 70), lifetime = NumberRange.new(0.2, 0.5) })
+	FX.burst(proxy, 24, { speed = NumberRange.new(10, 42), spread = Vector2.new(180, 180), lifetime = NumberRange.new(0.2, 0.45), size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 0) }) })
+
+	-- red hit-flash over the target
+	if targetModel and targetModel.Parent then
+		local highlight = Instance.new("Highlight")
+		highlight.Adornee = targetModel
+		highlight.FillColor = palette.red
+		highlight.OutlineColor = palette.hot
+		highlight.FillTransparency = 0.15
+		highlight.OutlineTransparency = 0
+		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+		highlight.Parent = owner
+		FX.tween(highlight, 0.4, { FillTransparency = 1, OutlineTransparency = 1 })
+		task.delay(0.5, function()
+			highlight:Destroy()
+		end)
+	end
+end
+
+-- Charge-up: streaks are pulled straight into the muzzle (a touch of swirl), thin rings collapse down the barrel, a
+-- white-hot core swells inside a spinning star flare, while a laser sight and a lock-on reticle close in on the target
+-- and energy collapses around the shooter's feet. Returns a handle: handle:Destroy() cuts it at the moment of the shot.
+local function createChargeEffect(muzzlePlug, targetRoot, duration, context)
+	local palette = VFX.palette
+	local rng = Random.new()
+	local twoPi = 2 * math.pi
+	local ball = Enum.PartType.Ball
+	local block = Enum.PartType.Block
+	local spinDirection = rng:NextNumber() < 0.5 and 1 or -1 -- one shared spin direction = one coherent vortex
+
+	local folder = Instance.new("Folder")
+	folder.Name = "RickPrimeCharge"
+	folder.Parent = workspace
+	local stage = context.stage or folder
+
+	-- tip of the barrel: -Z points out of the muzzle, the frame's XY plane is the plane the effects swirl in
+	local function getTipFrame()
+		local plugCFrame = muzzlePlug.CFrame
+		local tip = plugCFrame:PointToWorldSpace(Vector3.new(muzzlePlug.Size.X / 2, 0, 0))
+		return CFrame.lookAt(tip, tip + plugCFrame.RightVector, plugCFrame.UpVector)
+	end
+	local function getCoreFrame()
+		return getTipFrame() * CFrame.new(0, 0, -VFX.coreOffset)
+	end
+	local origin = getCoreFrame()
+
+	FX.sound(VFX.sounds.charge, folder)
+
+	-- streaks and motes: start in a cone in front of the muzzle, get pulled into the core
+	local particles = {}
+	local streakColors = { palette.red, palette.bright }
+	local function addParticles(count, isStreak)
+		local lifeMax = isStreak and 0.34 or 0.38
+		for _ = 1, count do
+			table.insert(particles, {
+				streak = isStreak,
+				t0 = rng:NextNumber() ^ 0.65 * math.max(duration - lifeMax, 0),
+				life = rng:NextNumber(lifeMax * 0.65, lifeMax),
+				azimuth = rng:NextNumber(0, twoPi),
+				polar = isStreak and rng:NextNumber(0.12, 1.15) or rng:NextNumber(0.1, 1.7), -- angle off the barrel axis
+				radius = rng:NextNumber(isStreak and 0.5 or 0.3, 1) * VFX.chargeRadius * (isStreak and 1 or 1.1),
+				swirl = (isStreak and rng:NextNumber(1, 2.2) or rng:NextNumber(1.2, 2.6)) * spinDirection,
+				size = isStreak and rng:NextNumber(0.1, 0.17) or rng:NextNumber(0.05, 0.1),
+				color = isStreak and streakColors[rng:NextInteger(1, 2)] or palette.hot,
+			})
+		end
+	end
+	addParticles(VFX.streakCount, true)
+	addParticles(VFX.moteCount, false)
+
+	-- thin rings, staggered, each collapsing from out front into the core
+	local rings = {}
+	for ringIndex = 0, VFX.ringCount - 1 do
+		table.insert(rings, { t0 = ringIndex * math.max(duration - VFX.ringLife, 0) / math.max(VFX.ringCount - 1, 1) })
+	end
+
+	-- the core: white-hot ball inside a red halo and a deep aura, with a light and a spinning star flare
+	local core = FX.part(folder, ball, palette.hot, 0, Vector3.one * 0.05, origin)
+	local halo = FX.part(folder, ball, palette.red, 0.5, Vector3.one * 0.1, origin)
+	local aura = FX.part(folder, ball, palette.deep, 0.86, Vector3.one * 0.2, origin)
+	local coreLight = Instance.new("PointLight")
+	coreLight.Color = palette.bright
+	coreLight.Range = 10
+	coreLight.Shadows = false
+	coreLight.Parent = core
+
+	local flare = {}
+	for index = 1, 4 do
+		flare[index] = FX.part(folder, block, index % 2 == 1 and palette.hot or palette.bright, 1, Vector3.new(0.1, 0.03, 0.03), origin)
+	end
+	local tipRing = FX.newRing(folder, 16, palette.red) -- glowing collar around the barrel tip
+
+	local orbiters = {}
+	for _ = 1, VFX.orbiterCount do
+		local head = FX.part(folder, ball, palette.hot, 1, Vector3.one * 0.14, origin)
+		local orbiterTrail = FX.trail(head, 0.1, 0.16, palette.bright)
+		orbiterTrail.Enabled = false
+		table.insert(orbiters, {
+			part = head,
+			trail = orbiterTrail,
+			tilt = CFrame.Angles(rng:NextNumber(0, math.pi), rng:NextNumber(0, math.pi), 0),
+			speed = rng:NextNumber(12, 17) * spinDirection,
+			phase = rng:NextNumber(0, twoPi),
+		})
+	end
+
+	-- laser sight from the barrel to the target
+	local sightStartPart, sightStart = FX.node(folder)
+	local sightEndPart, sightEnd = FX.node(folder)
+	local sightBeam = FX.beam(folder, sightStart, sightEnd, ColorSequence.new(palette.red), 0.03, 0.03, NumberSequence.new(0.8), 0)
+	sightBeam.Enabled = targetRoot ~= nil
+
+	-- lock-on reticle (its own folder so it can collapse after the charge folder is gone)
+	local reticle
+	if targetRoot then
+		local reticleFolder = Instance.new("Folder")
+		reticleFolder.Name = "RickPrimeReticleHolder"
+		reticleFolder.Parent = workspace
+		task.delay(duration + 1, function()
+			reticleFolder:Destroy()
+		end)
+		reticle = FX.reticle(reticleFolder, targetRoot)
+	end
+
+	-- energy collapsing inward around the shooter's feet + embers rising off the floor
+	local feetHit = context.feetPosition and FX.floorAt(context.feetPosition, context.ignore)
+	local floorFrame
+	local embers
+	if feetHit then
+		floorFrame = FX.facing(feetHit.Position + feetHit.Normal * 0.12, feetHit.Normal)
+		local emberPart = FX.part(stage, block, palette.red, 1, Vector3.new(3, 0.1, 3), CFrame.new(feetHit.Position + feetHit.Normal * 0.2))
+		embers = Instance.new("ParticleEmitter")
+		embers.Rate = 55
+		embers.LightEmission = 1
+		embers.LightInfluence = 0
+		embers.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, palette.hot), ColorSequenceKeypoint.new(0.4, palette.bright), ColorSequenceKeypoint.new(1, palette.deep) })
+		embers.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) })
+		embers.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+		embers.Lifetime = NumberRange.new(0.5, 0.9)
+		embers.Speed = NumberRange.new(6, 13)
+		embers.SpreadAngle = Vector2.new(25, 25)
+		embers.Acceleration = Vector3.new(0, 5, 0)
+		embers.EmissionDirection = Enum.NormalId.Top
+		embers.Parent = emberPart
+	end
+	local groundPulses = { 0, 0.45 }
+	local groundPulseIndex = 1
+
+	local stopped = false
+	local startTime = os.clock()
+	local connection
+	connection = RunService.PreRender:Connect(function()
+		if stopped or not folder.Parent then
+			connection:Disconnect()
+			return
+		end
+		if not muzzlePlug.Parent then
+			connection:Disconnect()
+			folder:Destroy()
+			return
+		end
+
+		local now = os.clock()
+		local elapsed = now - startTime
+		local progress = math.clamp(elapsed / duration, 0, 1)
+		local tipFrame = getTipFrame()
+		local frame = tipFrame * CFrame.new(0, 0, -VFX.coreOffset)
+
+		-- core swells and flickers harder as it fills up
+		local flicker = 1 + (0.5 + progress) * (0.06 * math.sin(elapsed * 57) + 0.04 * math.sin(elapsed * 93))
+		local coreSize = (0.05 + 0.85 * progress ^ 2) * flicker
+		core.Size = Vector3.one * coreSize
+		core.CFrame = frame
+		halo.Size = Vector3.one * coreSize * 2.2
+		halo.CFrame = frame
+		aura.Size = Vector3.one * coreSize * 3.4
+		aura.CFrame = frame
+		coreLight.Brightness = 1 + 7 * progress
+		coreLight.Range = 10 + 6 * progress
+
+		-- star flare in the plane facing the camera behind the shooter
+		local flareAlpha = math.clamp((progress - 0.12) / 0.2, 0, 1)
+		local flareLength = (0.5 + 3.4 * progress ^ 2) * flicker
+		local flareThickness = 0.025 + 0.05 * progress
+		local flareSpin = spinDirection * elapsed * 4
+		for index, blade in ipairs(flare) do
+			local length = index % 2 == 1 and flareLength or flareLength * 0.55
+			blade.Size = Vector3.new(length, flareThickness, flareThickness)
+			blade.CFrame = frame * CFrame.Angles(0, 0, flareSpin + (index - 1) * math.pi / 4)
+			blade.Transparency = 1 - flareAlpha * 0.85
+		end
+		FX.setRing(tipRing, tipFrame * CFrame.new(0, 0, -0.03), 0.17 + 0.1 * progress, 0.02 + 0.02 * progress, 0.6 - 0.5 * progress * (0.85 + 0.15 * math.sin(elapsed * 70)), 0)
+
+		-- streaks / motes: radius shrinks while the swirl keeps advancing, so they speed up as they're pulled in
+		for _, particle in ipairs(particles) do
+			local alpha = (elapsed - particle.t0) / particle.life
+			if alpha >= 0 and alpha < 1 then
+				local ease = alpha ^ (particle.streak and 2.4 or 1.7)
+				local distance = particle.radius + (VFX.endRadius - particle.radius) * ease
+				local swirlAngle = particle.azimuth + particle.swirl * ease
+				local lateral = distance * math.sin(particle.polar)
+				local forward = distance * math.cos(particle.polar)
+				local particleCFrame = frame * CFrame.new(math.cos(swirlAngle) * lateral, math.sin(swirlAngle) * lateral, -forward)
+
+				if not particle.part then
+					local head = FX.part(folder, ball, particle.color:Lerp(Color3.new(1, 1, 1), particle.streak and 0.65 or 0.5), 1, Vector3.one * (particle.streak and particle.size * 1.5 or particle.size), particleCFrame)
+					if particle.streak then
+						particle.trail = FX.trail(head, particle.size, particle.life * 0.55, particle.color)
+					end
+					particle.part = head
+				end
+
+				particle.part.CFrame = particleCFrame
+				if not particle.streak then
+					particle.part.Size = Vector3.one * particle.size * (1 - 0.6 * ease)
+				end
+				local fadeIn = math.clamp(1 - alpha / 0.12, 0, 1)
+				local fadeOut = math.clamp((alpha - 0.8) / 0.2, 0, 1)
+				particle.part.Transparency = math.max(fadeIn, fadeOut)
+			elseif alpha >= 1 and particle.part then
+				local finishedPart = particle.part
+				particle.part = nil
+				finishedPart.Transparency = 1
+				if particle.trail then
+					particle.trail.Enabled = false
+					task.delay(particle.life, function()
+						finishedPart:Destroy()
+					end)
+				else
+					finishedPart:Destroy()
+				end
+			end
+		end
+
+		-- thin rings collapsing toward the core
+		for _, ring in ipairs(rings) do
+			local alpha = (elapsed - ring.t0) / VFX.ringLife
+			if alpha >= 0 and alpha < 1 then
+				if not ring.visual then
+					ring.visual = FX.newRing(folder, VFX.ringSegments, palette.bright)
+				end
+				local ease = alpha ^ 2
+				local ringRadius = VFX.chargeRadius * 0.7 * (1 - ease) + 0.12
+				local ringDepth = VFX.chargeRadius * 0.62 * (1 - ease)
+				local pulse = math.sin(math.pi * alpha)
+				FX.setRing(ring.visual, frame * CFrame.new(0, 0, -ringDepth), ringRadius, 0.04 + 0.06 * pulse, 1 - 0.9 * pulse ^ 0.6, spinDirection * alpha * 2.5)
+			elseif alpha >= 1 and ring.visual then
+				FX.destroyRing(ring.visual)
+				ring.visual = nil
+			end
+		end
+
+		-- sparks orbiting the core
+		local orbitRadius = coreSize * 0.9 + 0.3
+		for _, orbiter in ipairs(orbiters) do
+			local orbitAngle = orbiter.phase + orbiter.speed * elapsed
+			orbiter.part.CFrame = frame * orbiter.tilt * CFrame.new(math.cos(orbitAngle) * orbitRadius, math.sin(orbitAngle) * orbitRadius, 0)
+			orbiter.part.Transparency = math.clamp(1 - progress / 0.2, 0, 1)
+			orbiter.trail.Enabled = progress > 0.1
+		end
+
+		-- laser sight + reticle
+		if targetRoot and targetRoot.Parent then
+			sightStartPart.Position = tipFrame.Position
+			sightEndPart.Position = targetRoot.Position
+			local width = (0.025 + 0.05 * progress) * (0.8 + 0.4 * (math.noise(elapsed * 60, 3.1, 0.5) + 0.5))
+			sightBeam.Width0 = width
+			sightBeam.Width1 = width
+			sightBeam.Transparency = NumberSequence.new(0.8 - 0.65 * progress)
+			if reticle then
+				reticle.update(progress, now)
+			end
+		else
+			sightBeam.Enabled = false
+		end
+
+		-- energy ring collapsing at the shooter's feet
+		if floorFrame then
+			while groundPulseIndex <= #groundPulses and progress >= groundPulses[groundPulseIndex] do
+				groundPulseIndex += 1
+				FX.shockRing(stage, floorFrame, { startRadius = 9, endRadius = 0.8, duration = 0.4, thickness = 0.14, color = palette.red, segments = 40, startTransparency = 0.1, easeIn = true })
+			end
+		end
+	end)
+
+	local handle = {}
+	function handle:Destroy()
+		if stopped then
+			return
+		end
+		stopped = true
+		if embers then
+			embers.Enabled = false
+		end
+		if reticle then
+			reticle.collapse()
+		end
+		folder:Destroy()
+	end
+	return handle
+end
+
+local function getClosestTargetRoot(origin)
+	local closestRoot
+	local closestDistance = math.huge
+
+	local function consider(otherRoot)
+		local distance = (otherRoot.Position - origin).Magnitude
+		if distance < closestDistance then
+			closestDistance = distance
+			closestRoot = otherRoot
+		end
+	end
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		local otherCharacter = otherPlayer ~= localPlayer and otherPlayer.Character
+		local otherRoot = otherCharacter and otherCharacter:FindFirstChild("HumanoidRootPart")
+		local otherHumanoid = otherCharacter and otherCharacter:FindFirstChildOfClass("Humanoid")
+		if otherRoot and otherHumanoid and otherHumanoid.Health > 0 then
+			consider(otherRoot)
+		end
+	end
+
+	-- workspace.Live["Weakest Dummy"] competes with the players for "closest"
+	local liveFolder = workspace:FindFirstChild(DUMMY_FOLDER_NAME)
+	local dummy = liveFolder and liveFolder:FindFirstChild(DUMMY_NAME)
+	if dummy then
+		local dummyRoot = dummy:FindFirstChild("HumanoidRootPart") or (dummy:IsA("Model") and dummy.PrimaryPart)
+		local dummyHumanoid = dummy:FindFirstChildOfClass("Humanoid")
+		if dummyRoot and dummyRoot.Parent and (not dummyHumanoid or dummyHumanoid.Health > 0) then
+			consider(dummyRoot)
+		end
+	end
+
+	return closestRoot
+end
+
+-- The shot. A white-hot comet zips down the line while a thin laser trace is left behind it; ripples pop off the barrel,
+-- the trace lingers, flutters and collapses. Impact effects fire the instant the comet lands.
+local RIPPLE_DISTANCES = { 2, 4.6, 7.8, 11.8 }
+
+local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
+	local palette = VFX.palette
+	local muzzlePlug = gunModel.Parent and gunModel:FindFirstChild("MuzzlePlug")
+	if not muzzlePlug then
+		onFinished()
+		return
+	end
+
+	local function getMuzzleOrigin()
+		return muzzlePlug.CFrame:PointToWorldSpace(Vector3.new(muzzlePlug.Size.X / 2, 0, 0))
+	end
+
+	local targetRoot = (lockedTargetRoot and lockedTargetRoot.Parent and lockedTargetRoot) or getClosestTargetRoot(getMuzzleOrigin())
+	local ball = Enum.PartType.Ball
+
+	local folder = Instance.new("Folder")
+	folder.Name = "RickPrimeBeam"
+	folder.Parent = workspace
+	local stage = context.stage or folder
+
+	local startOrigin = getMuzzleOrigin()
+	local fallbackTarget = startOrigin + muzzlePlug.CFrame.RightVector * BEAM_FALLBACK_RANGE
+	local function getTargetPosition()
+		if targetRoot and targetRoot.Parent then
+			return targetRoot.Position
+		end
+		return fallbackTarget
+	end
+	local firstOffset = getTargetPosition() - startOrigin
+	local fireDirection = firstOffset.Magnitude > 0.1 and firstOffset.Unit or muzzlePlug.CFrame.RightVector
+
+	-- the blast: muzzle flash + a shock ring blown across the floor under the shooter (pcall'd: a visual hiccup must never stop the sequence)
+	local blastOk, blastError = pcall(function()
+		FX.sound(VFX.sounds.fire, folder)
+		FX.muzzleBurst(stage, startOrigin, fireDirection)
+		local feetHit = context.feetPosition and FX.floorAt(context.feetPosition, context.ignore)
+		if feetHit then
+			local floorFrame = FX.facing(feetHit.Position + feetHit.Normal * 0.12, feetHit.Normal)
+			FX.shockRing(stage, floorFrame, { startRadius = 0.8, endRadius = 13, duration = 0.4, thickness = 0.4, color = palette.red, segments = 40, startTransparency = 0.05 })
+			FX.shockRing(stage, floorFrame, { startRadius = 0.6, endRadius = 8, duration = 0.28, thickness = 0.25, color = palette.hot, segments = 36, startTransparency = 0.1 })
+		end
+	end)
+	if not blastOk then
+		warn("[RickPrimeGun] muzzle blast error:", blastError)
+	end
+
+	-- laser trace (three layers, tapered: fat at the barrel, thin at the target) + the comet head
+	local originPart, originAttachment = FX.node(folder)
+	local headPart, headAttachment = FX.node(folder)
+	local tailPart, tailAttachment = FX.node(folder)
+
+	local auraBeam = FX.beam(folder, originAttachment, headAttachment, ColorSequence.new(palette.deep), 1.5, 0.5, NumberSequence.new(0.78), 0)
+	local glowBeam = FX.beam(folder, originAttachment, headAttachment, ColorSequence.new(palette.bright, palette.red), 0.62, 0.24, NumberSequence.new(0.1), 0.02)
+	local coreBeam = FX.beam(folder, originAttachment, headAttachment, ColorSequence.new(palette.hot), 0.24, 0.1, NumberSequence.new(0), 0.04)
+	local cometBeam = FX.beam(
+		folder,
+		tailAttachment,
+		headAttachment,
+		ColorSequence.new({
+			ColorSequenceKeypoint.new(0, palette.red),
+			ColorSequenceKeypoint.new(0.6, palette.hot),
+			ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+		}),
+		0.05,
+		1.1,
+		NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.35, 0.3),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		0.06
+	)
+	local headBall = FX.part(folder, ball, Color3.new(1, 1, 1), 0, Vector3.one * 0.55, CFrame.new(startOrigin))
+	local muzzleBall = FX.part(folder, ball, palette.bright, 0.1, Vector3.one * 0.9, CFrame.new(startOrigin))
+	local targetBall = FX.part(folder, ball, palette.red, 1, Vector3.one * 0.5, CFrame.new(startOrigin))
+
+	local startedAt = os.clock()
+	local arrivedAt
+	local rippleSpawned = {}
+	local connection
+
+	local function cleanup()
+		connection:Disconnect()
+		folder:Destroy()
+	end
+
+	connection = RunService.PreRender:Connect(function()
+		if not muzzlePlug.Parent then
+			cleanup()
+			onFinished()
+			return
+		end
+
+		local elapsed = os.clock() - startedAt
+		local muzzleCFrame = muzzlePlug.CFrame
+		local origin = muzzleCFrame:PointToWorldSpace(Vector3.new(muzzlePlug.Size.X / 2, 0, 0))
+		local targetPosition = getTargetPosition()
+		local offset = targetPosition - origin
+		local totalDistance = math.max(offset.Magnitude, 0.1)
+		local direction = offset.Magnitude > 0.1 and offset.Unit or muzzleCFrame.RightVector
+
+		local speed = totalDistance / BEAM_TRAVEL_TIME
+		local travelled = speed * elapsed
+		local headDistance = math.min(travelled, totalDistance)
+		local cometLength = math.min(VFX.cometLength, totalDistance * 0.7)
+		local tailDistance = math.clamp(travelled - cometLength, 0, totalDistance)
+
+		-- the comet lands
+		if not arrivedAt and headDistance >= totalDistance then
+			arrivedAt = elapsed
+			local impactOk, impactError = pcall(function()
+				FX.sound(VFX.sounds.impact, folder)
+				FX.impact(stage, targetPosition, direction, targetRoot and targetRoot.Parent, context.ignore)
+			end)
+			if not impactOk then
+				warn("[RickPrimeGun] impact error:", impactError)
+			end
+			if context.onImpact then
+				pcall(context.onImpact)
+			end
+		end
+
+		local collapse = arrivedAt and math.clamp((elapsed - arrivedAt) / (BEAM_HOLD + BEAM_FADE_TIME), 0, 1) or 0
+		if collapse >= 1 then
+			cleanup()
+			onFinished()
+			return
+		end
+
+		-- the trace punches in fat, settles, then flutters and pinches shut
+		local punch = 1 + 1.4 * math.exp(-elapsed * 22)
+		local flutter = arrivedAt and (1 + 0.12 * math.sin(elapsed * 85) + 0.08 * math.sin(elapsed * 133)) or 1
+		local scale = (1 - collapse) ^ 1.6 * flutter * punch
+		auraBeam.Width0 = 1.5 * scale
+		auraBeam.Width1 = 0.5 * scale
+		auraBeam.Transparency = NumberSequence.new(0.78 + 0.22 * collapse ^ 2)
+		glowBeam.Width0 = 0.62 * scale
+		glowBeam.Width1 = 0.24 * scale
+		glowBeam.Transparency = NumberSequence.new(0.1 + 0.9 * collapse ^ 2)
+		coreBeam.Width0 = 0.24 * scale
+		coreBeam.Width1 = 0.1 * scale
+		coreBeam.Transparency = NumberSequence.new(collapse ^ 3)
+
+		local headPosition = origin + direction * headDistance
+		originPart.Position = origin
+		headPart.Position = headPosition
+		tailPart.Position = origin + direction * tailDistance
+		cometBeam.Enabled = tailDistance < totalDistance - 0.05
+
+		-- glowing anchors: the hot head, the smoking barrel, the spot on the target
+		local headFade = arrivedAt and math.clamp((elapsed - arrivedAt) / 0.06, 0, 1) or 0
+		headBall.CFrame = CFrame.new(headPosition)
+		headBall.Size = Vector3.one * 0.55 * (1 - headFade * 0.5)
+		headBall.Transparency = headFade
+		muzzleBall.CFrame = CFrame.new(origin)
+		muzzleBall.Size = Vector3.one * (0.05 + 0.9 * (1 - collapse) ^ 2 * flutter)
+		muzzleBall.Transparency = 0.1 + 0.9 * collapse
+		if arrivedAt then
+			targetBall.CFrame = CFrame.new(targetPosition)
+			targetBall.Size = Vector3.one * (0.05 + 1.8 * (1 - collapse) ^ 2 * flutter)
+			targetBall.Transparency = 0.15 + 0.85 * collapse
+		end
+
+		-- thin ripples pop off the barrel one after another, as if the air is being torn open
+		for index, distance in ipairs(RIPPLE_DISTANCES) do
+			if not rippleSpawned[index] and elapsed >= (index - 1) * 0.028 and distance < totalDistance * 0.85 then
+				rippleSpawned[index] = true
+				FX.shockRing(folder, FX.facing(origin + direction * distance, direction), {
+					startRadius = 0.35,
+					endRadius = 1.4 + index * 0.18,
+					duration = 0.24,
+					thickness = 0.2,
+					color = index % 2 == 0 and palette.hot or palette.bright,
+					segments = 18,
+					startTransparency = 0.15,
+				})
+			end
+		end
+	end)
+end
+
+local function runSequence(character, onFinished)
+	local humanoid = character:WaitForChild("Humanoid")
+	if humanoid.RigType ~= Enum.HumanoidRigType.R6 then
+		onFinished()
+		return
+	end
+
+	local leftArm = character:WaitForChild("Left Arm")
+	local rightArm = character:WaitForChild("Right Arm")
+
+	for _, leftoverName in ipairs({ GUN_MODEL_NAME, WELD_NAME, LEGACY_WIELD_NAME }) do
+		local leftoverInstance = rightArm:FindFirstChild(leftoverName)
+		if leftoverInstance then
+			leftoverInstance:Destroy()
+		end
+	end
+	local torso = character:WaitForChild("Torso")
+	local rightShoulder = torso:WaitForChild("Right Shoulder")
+
+	local baseShoulderC0 = rightShoulder:GetAttribute(BASE_SHOULDER_ATTRIBUTE)
+	if baseShoulderC0 then
+		rightShoulder.C0 = baseShoulderC0
+		rightShoulder:SetAttribute(BASE_SHOULDER_ATTRIBUTE, nil)
+	end
+
+	local rootPart = character:WaitForChild("HumanoidRootPart")
+	local targetRoot = getClosestTargetRoot(rootPart.Position)
+
+	character.Archivable = true
+	local clone = character:Clone()
+	clone.Name = "RickPrimeClone"
+	for _, descendant in ipairs(clone:GetDescendants()) do
+		if descendant:IsA("LuaSourceContainer") then
+			descendant:Destroy()
+		end
+	end
+	local cloneHumanoid = clone:FindFirstChildOfClass("Humanoid")
+	cloneHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	clone.HumanoidRootPart.Anchored = true
+	clone.Parent = workspace
+	clone:PivotTo(rootPart.CFrame)
+
+	local camera = workspace.CurrentCamera
+	local savedCameraType = camera.CameraType
+	camera.CameraType = Enum.CameraType.Scriptable
+	local baseCameraCFrame = camera.CFrame
+	local savedFov = camera.FieldOfView
+	local fovZoomStart = os.clock()
+	local shakeBindName = "RickPrimeShake" .. tostring(os.clock())
+	local cameraRig = FX.camera(shakeBindName, camera, baseCameraCFrame, savedFov, fovZoomStart, BEAM_DELAY)
+	local screenFx = FX.screen(camera)
+	-- everything that has to outlive the charge / beam folders (blast rings, impact, sparks) lives on this stage
+	local stage = Instance.new("Folder")
+	stage.Name = "RickPrimeStage"
+	stage.Parent = workspace
+	task.delay(SEQUENCE_TIMEOUT + 5, function()
+		if stage.Parent then
+			stage:Destroy()
+		end
+	end)
+
+	local savedDisplayDistance = humanoid.DisplayDistanceType
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	local savedDecalTransparency = {}
+	local cloneRoot = clone.HumanoidRootPart
+	local cloneBasePosition = cloneRoot.Position
+	local bodyKick = 0 -- studs the shooter is shoved backwards by the pistol's recoil (driven by the shot loop below)
+
+	local function faceCloneAtTarget()
+		if targetRoot and targetRoot.Parent and clone.Parent then
+			local clonePosition = cloneBasePosition
+			local targetPosition = targetRoot.Position
+			local flatTarget = Vector3.new(targetPosition.X, clonePosition.Y, targetPosition.Z)
+			if (flatTarget - clonePosition).Magnitude > 0.01 then
+				clone:PivotTo(CFrame.lookAt(clonePosition, flatTarget) * CFrame.new(0, 0, bodyKick))
+			end
+		end
+	end
+
+	local function updateSequence()
+		if not DEBUG_SHOW_REAL_CHARACTER then
+			for _, descendant in ipairs(character:GetDescendants()) do
+				if descendant:IsA("BasePart") then
+					descendant.LocalTransparencyModifier = 1
+				elseif descendant:IsA("Decal") then
+					if savedDecalTransparency[descendant] == nil then
+						savedDecalTransparency[descendant] = descendant.Transparency
+					end
+					descendant.Transparency = 1
+				end
+			end
+		end
+
+		faceCloneAtTarget()
+	end
+	updateSequence()
+	local sequenceConnection = RunService.Heartbeat:Connect(updateSequence)
+	-- also face the target right before every render so the clone never lags a frame behind
+	local cloneFaceConnection = RunService.PreRender:Connect(faceCloneAtTarget)
+
+	-- Every-frame lock: the real character stays behind the target AND faces it.
+	-- It runs before physics, after physics and right before render, so neither the humanoid
+	-- controller, network interpolation nor the target's movement can knock us off position.
+	local lockConnections = {}
+	local savedAutoRotate = humanoid.AutoRotate
+	local lockDirection -- unit vector target -> our spot, fixed once at teleport time (see pickLockDirection)
+	local sequenceFinished = false
+
+	local function stopLock()
+		for _, lockConnection in ipairs(lockConnections) do
+			lockConnection:Disconnect()
+		end
+		table.clear(lockConnections)
+	end
+
+	-- "Behind" = the far side of the target from where we teleport in from, the same way the
+	-- original teleport works: spot = targetPosition + unit(targetPosition - myPosition) * distance.
+	-- The direction is picked ONCE, at the moment of the teleport. Re-deriving it from our own
+	-- position every frame would flip us to the other side of the target on each frame.
+	local function pickLockDirection()
+		local targetPosition = targetRoot.Position
+		local myPosition = rootPart.Position
+		local approach = Vector3.new(targetPosition.X - myPosition.X, 0, targetPosition.Z - myPosition.Z)
+		if approach.Magnitude > 0.01 then
+			lockDirection = approach.Unit
+		else
+			-- standing right on top of the target: fall back to the back of the target
+			local look = targetRoot.CFrame.LookVector
+			local flatLook = Vector3.new(look.X, 0, look.Z)
+			lockDirection = flatLook.Magnitude > 0.01 and -flatLook.Unit or Vector3.new(0, 0, 1)
+		end
+	end
+
+	local function lockBehindTarget()
+		if sequenceFinished then
+			return
+		end
+		if not (rootPart.Parent and targetRoot and targetRoot.Parent) then
+			stopLock()
+			return
+		end
+		if not lockDirection then
+			return
+		end
+
+		local targetPosition = targetRoot.Position
+
+		-- the server sees both of us a little late, so aim where the target will be, not where it is drawn
+		local anchorPosition = targetPosition
+		if LOCK_PREDICT_LATENCY then
+			local leadTime = math.clamp(localPlayer:GetNetworkPing(), 0, LOCK_MAX_PREDICT_TIME)
+			local lead = targetRoot.AssemblyLinearVelocity * leadTime
+			if lead.Magnitude > LOCK_MAX_LEAD then
+				lead = lead.Unit * LOCK_MAX_LEAD
+			end
+			anchorPosition = targetPosition + lead
+		end
+
+		local behindPosition = anchorPosition + lockDirection * BEHIND_DISTANCE
+
+		-- always face the target's real position (flat), falling back to straight back along the lock line
+		local facePoint = Vector3.new(targetPosition.X, behindPosition.Y, targetPosition.Z)
+		if (facePoint - behindPosition).Magnitude < 0.01 then
+			facePoint = behindPosition - lockDirection
+		end
+
+		rootPart.CFrame = CFrame.lookAt(behindPosition, facePoint)
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	if targetRoot then
+		task.delay(TELEPORT_DELAY, function()
+			if sequenceFinished or not clone.Parent then
+				return
+			end
+			humanoid.AutoRotate = false -- stop the humanoid turning us toward our movement direction
+			pickLockDirection()
+			lockBehindTarget()
+			table.insert(lockConnections, RunService.PreSimulation:Connect(lockBehindTarget))
+			table.insert(lockConnections, RunService.Heartbeat:Connect(lockBehindTarget))
+			table.insert(lockConnections, RunService.PreRender:Connect(lockBehindTarget))
+		end)
+	end
+
+	local gunModel
+	local cloneGunTrack
+	local shotLoop -- per-frame pistol recoil / charge shake / screen grade
+	local shotStart -- os.clock() of the moment the pistol fires
+	local chargeStart
+	local returnedToPlayer = false
+	local function returnToPlayer()
+		if returnedToPlayer then
+			return
+		end
+		returnedToPlayer = true
+		sequenceConnection:Disconnect()
+		cloneFaceConnection:Disconnect()
+		stopLock()
+		humanoid.AutoRotate = savedAutoRotate
+
+		local gunTimePosition = cloneGunTrack and cloneGunTrack.TimePosition or ANIMATION_PAUSE_TIME
+		if rootPart.Parent and humanoid.Health > 0 then
+			rootPart.CFrame = CFrame.new(cloneBasePosition) * clone:GetPivot().Rotation
+			rootPart.AssemblyLinearVelocity = Vector3.zero
+			rootPart.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		local cloneArm = clone:FindFirstChild("Left Arm")
+		local cloneArmWeld = cloneArm and cloneArm:FindFirstChild(WELD_NAME)
+		if gunModel and cloneArmWeld and leftArm.Parent then
+			cloneArmWeld.Part0 = leftArm
+			cloneArmWeld.Parent = leftArm
+			gunModel.Parent = leftArm
+		end
+
+		for _, descendant in ipairs(character:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.LocalTransparencyModifier = 0
+			end
+		end
+		for decal, originalTransparency in pairs(savedDecalTransparency) do
+			decal.Transparency = originalTransparency
+		end
+		humanoid.DisplayDistanceType = savedDisplayDistance
+
+		clone:Destroy()
+		if humanoid.Health > 0 then
+			resumeGunAnimation(humanoid, gunTimePosition)
+		end
+	end
+
+	local function finishSequence()
+		if sequenceFinished then
+			return
+		end
+		sequenceFinished = true
+		sequenceConnection:Disconnect()
+		cloneFaceConnection:Disconnect()
+		RunService:UnbindFromRenderStep(shakeBindName)
+		screenFx.destroy()
+		if shotLoop then
+			shotLoop:Disconnect()
+			shotLoop = nil
+		end
+		task.delay(1.2, function() -- let the blast and impact finish playing out
+			stage:Destroy()
+		end)
+		camera.FieldOfView = savedFov
+		stopLock()
+		humanoid.AutoRotate = savedAutoRotate
+
+		returnToPlayer()
+		camera.CameraType = savedCameraType
+		if gunModel then
+			gunModel:Destroy()
+		end
+		local playerGunWeld = leftArm:FindFirstChild(WELD_NAME)
+		if playerGunWeld then
+			playerGunWeld:Destroy()
+		end
+		onFinished()
+	end
+
+	local gunArm = clone:FindFirstChild("Left Arm")
+	gunModel = attachGun(gunArm)
+	local gunWeld = gunArm:FindFirstChild(WELD_NAME)
+	local gunBaseC0 = gunWeld and gunWeld.C0
+
+	local shotContext = {
+		stage = stage,
+		ignore = FX.ignoreList(clone, character, targetRoot and targetRoot.Parent),
+		feetPosition = cloneBasePosition,
+		onImpact = function()
+			cameraRig.impact()
+			screenFx.impact()
+		end,
+	}
+
+	local chargeEffect = createChargeEffect(gunModel:FindFirstChild("MuzzlePlug"), targetRoot, BEAM_DELAY, shotContext)
+	chargeStart = os.clock()
+	cloneGunTrack = playGunAnimation(cloneHumanoid)
+
+	-- per frame: the pistol trembles and pulls back while it charges, then kicks (and shoves the shooter back) on the shot.
+	-- This only moves the pistol on its grip weld, the model itself is never touched.
+	shotLoop = RunService.PreRender:Connect(function()
+		local now = os.clock()
+		local offset = CFrame.identity
+		if shotStart then
+			local age = now - shotStart
+			local rise = 1 - math.exp(-age * 90)
+			offset = CFrame.new(0, 0, VFX.gunKickBack * math.exp(-age * 11) * rise)
+				* CFrame.Angles(VFX.gunKickPitch * math.exp(-age * 6.5) * rise, 0, 0)
+			bodyKick = VFX.bodyKick * math.exp(-age * 8) * rise
+		else
+			local progress = math.clamp((now - chargeStart) / BEAM_DELAY, 0, 1)
+			screenFx.setCharge(progress)
+			local tremor = progress ^ 2 * VFX.gunTremor
+			local pull = math.clamp((progress - 0.6) / 0.4, 0, 1) * VFX.gunPull
+			offset = CFrame.new(
+				math.noise(now * 47, 1.3, 0.5) * 2 * tremor,
+				math.noise(now * 47, 2.7, 0.5) * 2 * tremor,
+				pull + math.noise(now * 47, 4.1, 0.5) * 2 * tremor
+			) * CFrame.Angles(math.noise(now * 47, 5.9, 0.5) * 4 * tremor, 0, 0)
+		end
+		if gunWeld and gunWeld.Parent then
+			gunWeld.C0 = gunBaseC0 * offset
+		end
+	end)
+
+	task.delay(BEAM_DELAY, function()
+		if sequenceFinished then
+			return
+		end
+		chargeEffect:Destroy()
+		shotStart = os.clock()
+		cameraRig.fire()
+		pcall(screenFx.fire)
+		fireBeam(gunModel, finishSequence, targetRoot, shotContext)
+	end)
+	task.delay(CLONE_LIFETIME, returnToPlayer)
+	-- safety net: whatever the effects do, the real you always comes back
+	task.delay(BEAM_DELAY + 2, finishSequence)
+end
+
+local sequenceBusy = false
+local attackRunning = false
+
+RunService.Heartbeat:Connect(function()
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+		if not attackRunning and track.Animation and string.find(track.Animation.AnimationId, TRIGGER_ANIM_IDS.ATTACK) then
+			attackRunning = true
+			track:Stop(0)
+
+			task.spawn(function()
+				sequenceBusy = true
+				local ok, err = pcall(runSequence, character, function()
+					sequenceBusy = false
+				end)
+				if not ok then
+					warn("[RickPrimeGun] Error:", err)
+					sequenceBusy = false
+				end
+				-- stay locked until the sequence clears its busy flag (safety cap)
+				local started = tick()
+				while sequenceBusy and tick() - started < SEQUENCE_TIMEOUT do
+					task.wait(0.1)
+				end
+				attackRunning = false
+			end)
+
+			break
+		end
+	end
+end)
