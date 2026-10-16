@@ -56,8 +56,8 @@ PORTAL_FOV_SNAP = 95
 PORTAL_FOV_REST = 70
 PORTAL_FOV_ZOOM = 55
 PORTAL_FOV_RETURN_TIME = 0.8
-GUN_MODEL_ID = "rbxassetid://1118298602"
-GUN_ARM_OFFSET = CFrame.new(0, -0.7, 0) * CFrame.Angles(math.rad(-159.53), math.rad(79.61), math.rad(116.75))
+GUN_SCALE = 1
+GUN_DOME_CENTER = Vector3.new(0, 0.8, -1.07)
 
 SHOOT_SOUNDS = {
     "rbxassetid://10760302515",
@@ -523,6 +523,9 @@ function closePortal(p)
         p.state = "closing"
         p.stateStart = os.clock()
         p.armed = false
+        if p.shotPortal then
+            hideGun()
+        end
     end
 end
 
@@ -628,6 +631,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         if area then
             chosenTarget = nil
             p.armed = false
+            hideGun()
             teleportToArea(root, area, p)
             return
         end
@@ -640,6 +644,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         end
 
         p.armed = false
+        hideGun()
         -- exit portal sits where you used to land; you appear 2 studs behind it, facing the
         -- target, and keep walking forward through it
         portalSpot = (tRoot.CFrame * CFrame.new(0, 0, ARRIVE_DISTANCE + RETURN_PORTAL_OFFSET - EXIT_PORTAL_FRONT_DISTANCE)).Position
@@ -962,6 +967,7 @@ function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ign
     chosenTarget = typeof(target) == "Instance" and target or nil
     chosenArea = (type(target) == "table" and typeof(target.cframe) == "CFrame") and target or nil
     shooting = true
+    showGun()
     shootTrack = playCharacterAnimation(char, SHOOT_ANIMATION_ID)
     playSounds(SHOOT_SOUNDS, root)
     task.spawn(function()
@@ -974,8 +980,13 @@ function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ign
         orbOk, orbErr = pcall(shootOrb, fromPos, orbEnd, shotTime)
         if not orbOk then warn("[RickPortal] orb failed: " .. tostring(orbErr)) end
         shooting = false
-        buildOk, buildErr = pcall(buildPortal, portalCF, nil, onWall)
-        if not buildOk then warn("[RickPortal] portal failed: " .. tostring(buildErr)) end
+        buildOk, buildResult = pcall(buildPortal, portalCF, nil, onWall)
+        if buildOk and buildResult then
+            buildResult.shotPortal = true
+        else
+            hideGun()
+            warn("[RickPortal] portal failed: " .. tostring(buildResult))
+        end
     end)
 end
 
@@ -1922,105 +1933,404 @@ function teleportToDeathSpot(character)
     root.CFrame = deathCF
 end
 
+function buildGunModel()
+    local S = GUN_SCALE
+    local model = Instance.new("Model")
+    model.Name = "PortalGun"
+
+    local WHITE     = Color3.fromRGB(232, 238, 233)
+    local WHITE_LO  = Color3.fromRGB(158, 168, 163)
+    local NECK      = Color3.fromRGB(205, 211, 207)
+    local PANEL     = Color3.fromRGB(196, 204, 200)
+    local DARK      = Color3.fromRGB(40, 44, 43)
+    local DARK_GREY = Color3.fromRGB(78, 86, 83)
+    local MINT      = Color3.fromRGB(196, 236, 232)
+    local GLASS     = Color3.fromRGB(120, 255, 105)
+    local FILL      = Color3.fromRGB(55, 190, 50)
+    local NEON      = Color3.fromRGB(165, 255, 110)
+    local DOT       = Color3.fromRGB(110, 255, 95)
+    local RED       = Color3.fromRGB(224, 38, 38)
+    local RED_DARK  = Color3.fromRGB(112, 16, 16)
+    local YELLOW    = Color3.fromRGB(242, 200, 36)
+    local PURPLE    = Color3.fromRGB(128, 72, 188)
+    local SMOOTH    = Enum.Material.SmoothPlastic
+    local NEONMAT   = Enum.Material.Neon
+
+    local function finish(p)
+        p.Anchored = false
+        p.CanCollide = false
+        p.CanTouch = false
+        p.CanQuery = false
+        p.CastShadow = false
+        p.Massless = true
+        p.TopSurface = Enum.SurfaceType.Smooth
+        p.BottomSurface = Enum.SurfaceType.Smooth
+        p.Parent = model
+        return p
+    end
+
+    local function setCF(p, cf)
+        p.CFrame = CFrame.new(cf.Position * S) * cf.Rotation
+    end
+
+    local function block(name, size, cf, color, material, transparency)
+        local p = Instance.new("Part")
+        p.Name = name
+        p.Size = size * S
+        p.Color = color
+        p.Material = material or SMOOTH
+        p.Transparency = transparency or 0
+        setCF(p, cf)
+        return finish(p)
+    end
+
+    local function wedge(name, size, cf, color, material)
+        local p = Instance.new("WedgePart")
+        p.Name = name
+        p.Size = size * S
+        p.Color = color
+        p.Material = material or SMOOTH
+        setCF(p, cf)
+        return finish(p)
+    end
+
+    local function ball(name, diameter, pos, color, material, transparency)
+        local p = Instance.new("Part")
+        p.Shape = Enum.PartType.Ball
+        p.Name = name
+        p.Size = Vector3.new(diameter, diameter, diameter) * S
+        p.Color = color
+        p.Material = material or SMOOTH
+        p.Transparency = transparency or 0
+        setCF(p, CFrame.new(pos))
+        return finish(p)
+    end
+
+    local function cyl(name, axis, diameter, length, pos, color, material, transparency)
+        local p = Instance.new("Part")
+        p.Shape = Enum.PartType.Cylinder
+        p.Name = name
+        p.Size = Vector3.new(length, diameter, diameter) * S
+        p.Color = color
+        p.Material = material or SMOOTH
+        p.Transparency = transparency or 0
+        local rot = CFrame.new()
+        if axis == "Y" then
+            rot = CFrame.Angles(0, 0, math.rad(90))
+        elseif axis == "Z" then
+            rot = CFrame.Angles(0, math.rad(90), 0)
+        end
+        setCF(p, CFrame.new(pos) * rot)
+        return finish(p)
+    end
+
+    local function segment(name, a, b, thick, color)
+        local d = (b - a).Magnitude
+        if d < 0.001 then return nil end
+        return block(name, Vector3.new(thick, thick, d), CFrame.lookAt((a + b) / 2, b), color, NEONMAT)
+    end
+
+    local DC = GUN_DOME_CENTER
+    local DZ = DC.Z
+
+    block("Handle", Vector3.new(0.5, 0.36, 0.62), CFrame.new(0, 0, 0), NECK)
+    block("RearCap", Vector3.new(0.5, 0.36, 0.05), CFrame.new(0, 0, 0.335), DARK_GREY)
+
+    block("RedBezel", Vector3.new(0.03, 0.28, 0.28), CFrame.new(0.255, 0, 0.02), RED_DARK)
+    block("RedPad", Vector3.new(0.035, 0.22, 0.22), CFrame.new(0.27, 0, 0.02), RED)
+    block("RedPadShine", Vector3.new(0.037, 0.05, 0.16), CFrame.new(0.272, 0.07, 0.02), Color3.fromRGB(255, 120, 110))
+
+    block("BodyUpper", Vector3.new(0.74, 0.64, 0.9), CFrame.new(0, 0.08, -1.07), WHITE)
+    block("BodyLower", Vector3.new(0.74, 0.16, 0.9), CFrame.new(0, -0.32, -1.07), WHITE_LO)
+    block("TaperCore", Vector3.new(0.7, 0.36, 0.31), CFrame.new(0, 0, -0.465), WHITE)
+    wedge("TaperTop", Vector3.new(0.7, 0.22, 0.31), CFrame.new(0, 0.29, -0.465) * CFrame.Angles(0, math.pi, 0), WHITE)
+    wedge("TaperBottom", Vector3.new(0.7, 0.22, 0.31), CFrame.new(0, -0.29, -0.465) * CFrame.Angles(0, math.pi, math.pi), WHITE_LO)
+
+    block("SeamTop", Vector3.new(0.745, 0.012, 0.905), CFrame.new(0, 0.39, -1.07), DARK_GREY)
+    block("SeamLow", Vector3.new(0.745, 0.012, 0.905), CFrame.new(0, -0.24, -1.07), DARK_GREY)
+
+    block("FrontRim", Vector3.new(0.66, 0.7, 0.03), CFrame.new(0, 0, -1.535), DARK_GREY)
+    block("FrontPanel", Vector3.new(0.58, 0.62, 0.03), CFrame.new(0, 0, -1.55), PANEL)
+    for ix = -1, 1 do
+        for iy = -1, 1 do
+            local x, y = ix * 0.18, iy * 0.18
+            cyl("EmitterRing", "Z", 0.15, 0.02, Vector3.new(x, y, -1.57), DARK)
+            cyl("Emitter", "Z", 0.105, 0.02, Vector3.new(x, y, -1.58), DOT, NEONMAT)
+        end
+    end
+
+    local SX = 0.37
+    local DIAL_Y, DIAL_Z = 0.04, -1.17
+
+    cyl("DialBezel", "X", 0.5, 0.02, Vector3.new(SX, DIAL_Y, DIAL_Z), DARK_GREY)
+    cyl("DialRing", "X", 0.44, 0.05, Vector3.new(SX + 0.015, DIAL_Y, DIAL_Z), Color3.fromRGB(224, 230, 226))
+    for i = 0, 15 do
+        local a = i * (math.pi * 2 / 16)
+        local pos = Vector3.new(SX + 0.04, DIAL_Y + math.sin(a) * 0.215, DIAL_Z + math.cos(a) * 0.215)
+        block("DialTooth", Vector3.new(0.03, 0.028, 0.05), CFrame.new(pos) * CFrame.Angles(-a, 0, 0), Color3.fromRGB(128, 136, 132))
+    end
+    cyl("DialFace", "X", 0.31, 0.03, Vector3.new(SX + 0.05, DIAL_Y, DIAL_Z), Color3.fromRGB(188, 196, 192))
+    cyl("DialInner", "X", 0.2, 0.02, Vector3.new(SX + 0.07, DIAL_Y, DIAL_Z), Color3.fromRGB(150, 158, 154))
+    block("DialPointer", Vector3.new(0.02, 0.05, 0.15), CFrame.new(SX + 0.088, DIAL_Y + 0.045, DIAL_Z + 0.02) * CFrame.Angles(math.rad(-40), 0, 0), DARK)
+    cyl("DialHub", "X", 0.07, 0.02, Vector3.new(SX + 0.09, DIAL_Y, DIAL_Z), DARK)
+
+    local TZ = -0.72
+    cyl("ToggleBase", "X", 0.11, 0.025, Vector3.new(SX + 0.005, 0.3, TZ), DARK_GREY)
+    cyl("ToggleCollar", "X", 0.075, 0.03, Vector3.new(SX + 0.02, 0.3, TZ), Color3.fromRGB(190, 198, 194))
+    local lever = block("ToggleLever", Vector3.new(0.14, 0.035, 0.035),
+        CFrame.new(SX + 0.085, 0.31, TZ - 0.012) * CFrame.Angles(0, 0, math.rad(18)), YELLOW)
+    ball("ToggleTip", 0.055, Vector3.new(SX + 0.152, 0.3185, TZ - 0.018), YELLOW)
+
+    for i, y in ipairs({ 0.12, -0.04 }) do
+        cyl("ButtonRing" .. i, "X", 0.15, 0.02, Vector3.new(SX + 0.005, y, TZ), Color3.fromRGB(170, 178, 174))
+        cyl("Button" .. i, "X", 0.11, 0.05, Vector3.new(SX + 0.025, y, TZ), DARK)
+        cyl("ButtonShine" .. i, "X", 0.045, 0.01, Vector3.new(SX + 0.052, y + 0.015, TZ), Color3.fromRGB(110, 118, 114))
+    end
+
+    for i = 0, 7 do
+        local t = i / 7
+        local pos = Vector3.new(SX + 0.02, 0.12 - 0.16 * t, TZ + 0.085 * math.sin(math.pi * t))
+        ball("Bead", 0.04, pos, PURPLE)
+    end
+
+    for _, sx in ipairs({ 1, -1 }) do
+        wedge("CutoutLip", Vector3.new(0.02, 0.24, 0.35), CFrame.new(sx * (SX + 0.004), -0.27, -0.79), WHITE_LO)
+        wedge("CutoutDark", Vector3.new(0.024, 0.19, 0.28), CFrame.new(sx * (SX + 0.008), -0.285, -0.775), DARK)
+    end
+
+    cyl("DomeOutline", "Y", 0.68, 0.02, Vector3.new(0, 0.41, DZ), DARK)
+    cyl("DomeFlange", "Y", 0.64, 0.06, Vector3.new(0, 0.43, DZ), MINT, SMOOTH, 0.1)
+    cyl("DomeCollar", "Y", 0.52, 0.04, Vector3.new(0, 0.48, DZ), Color3.fromRGB(170, 215, 212), SMOOTH, 0.1)
+    local glassA = cyl("DomeGlass", "Y", 0.46, 0.34, Vector3.new(0, 0.67, DZ), GLASS, Enum.Material.Glass, 0.5)
+    local glassB = ball("DomeGlassTop", 0.46, Vector3.new(0, 0.84, DZ), GLASS, Enum.Material.Glass, 0.5)
+    glassA.Reflectance = 0.06
+    glassB.Reflectance = 0.06
+
+    local core = ball("DomeCore", 0.34, Vector3.new(0, 0.76, DZ), FILL, NEONMAT, 0.55)
+    local light = Instance.new("PointLight")
+    light.Name = "DomeLight"
+    light.Color = GLASS
+    light.Brightness = 1.2
+    light.Range = 7
+    light.Shadows = false
+    light.Parent = core
+
+    local rng = Random.new(5)
+    local R = 0.19
+    for v = 1, 6 do
+        local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-0.1, 1), rng:NextNumber(-1, 1)).Unit
+        local prev = DC + dir * R
+        for _ = 1, 3 do
+            dir = (dir + Vector3.new(rng:NextNumber(-0.8, 0.8), rng:NextNumber(-0.6, 0.8), rng:NextNumber(-0.8, 0.8))).Unit
+            local nxt = DC + dir * (R * rng:NextNumber(0.8, 1.05))
+            segment("Vein", prev, nxt, 0.02, NEON)
+            prev = nxt
+        end
+    end
+
+    for arm = 0, 1 do
+        local prev
+        for i = 0, 8 do
+            local a = arm * math.pi + i * 0.62
+            local r = 0.025 + i * 0.012
+            local pt = DC + Vector3.new(0, math.sin(a) * r, math.cos(a) * r)
+            if prev then segment("Swirl", prev, pt, 0.024, NEON) end
+            prev = pt
+        end
+    end
+    ball("SwirlEye", 0.07, DC, Color3.fromRGB(215, 255, 170), NEONMAT)
+
+    local handle = model:FindFirstChild("Handle")
+    model.PrimaryPart = handle
+    for _, part in ipairs(model:GetDescendants()) do
+        if part:IsA("BasePart") and part ~= handle then
+            local weld = Instance.new("Weld")
+            weld.Name = "GunPartWeld"
+            weld.Part0 = handle
+            weld.Part1 = part
+            weld.C0 = handle.CFrame:ToObjectSpace(part.CFrame)
+            weld.C1 = CFrame.new()
+            weld.Parent = handle
+        end
+    end
+
+    return model
+end
+
 gunTemplate = nil
 gunHolder = nil
+gunAnimConn = nil
+gunArmWeld = nil
+
+function getUnmortFolder()
+    local replicatedStorage = game:GetService("ReplicatedStorage")
+    local folder = replicatedStorage:FindFirstChild("Unmort")
+    if not folder then
+        folder = Instance.new("Folder")
+        folder.Name = "Unmort"
+        folder.Parent = replicatedStorage
+    end
+    return folder
+end
 
 function loadGunTemplate()
-    if gunTemplate then
+    if gunTemplate and gunTemplate.Parent then
         return gunTemplate
     end
-    loadedOk, loadedObjects = pcall(function()
-        return game:GetObjects(GUN_MODEL_ID)
-    end)
-    if not loadedOk or not loadedObjects or not loadedObjects[1] then
-        warn("[RickPortal] couldn't load the gun model")
+    local folder = getUnmortFolder()
+    local storedGun = folder:FindFirstChild("PortalGun")
+    if storedGun then
+        gunTemplate = storedGun
+        return gunTemplate
+    end
+    local built, result = pcall(buildGunModel)
+    if not built or not result then
+        warn("[RickPortal] couldn't build the gun model: " .. tostring(result))
         return nil
     end
-    gunTemplate = loadedObjects[1]
+    result.Name = "PortalGun"
+    result.Parent = folder
+    gunTemplate = result
     return gunTemplate
 end
 
-function attachGun(character)
-    template = loadGunTemplate()
-    if not template then return end
-
-    arm = character:WaitForChild("Right Arm", 5)
-    if not arm then
-        warn("[RickPortal] no Right Arm found for the gun")
-        return
+function stopGunAnimation()
+    if gunAnimConn then
+        gunAnimConn:Disconnect()
+        gunAnimConn = nil
     end
+end
 
+function hideGun()
+    stopGunAnimation()
+    if gunArmWeld then
+        gunArmWeld:Destroy()
+        gunArmWeld = nil
+    end
     if gunHolder then
         gunHolder:Destroy()
         gunHolder = nil
     end
-
-    newHolder = Instance.new("Model")
-    newHolder.Name = "RickPortalGun"
-    template:Clone().Parent = newHolder
-
-    gunParts = {}
-    for _, descendant in ipairs(newHolder:GetDescendants()) do
-        if descendant:IsA("BaseScript") then
-            descendant:Destroy()
-        elseif descendant:IsA("BasePart") then
-            table.insert(gunParts, descendant)
-        end
-    end
-    if #gunParts == 0 then
-        warn("[RickPortal] gun model has no parts")
-        newHolder:Destroy()
-        return
-    end
-
-    handle = newHolder:FindFirstChild("Handle", true)
-    if not handle or not handle:IsA("BasePart") then
-        handle = gunParts[1]
-    end
-
-    relativeOffsets = {}
-    for _, part in ipairs(gunParts) do
-        relativeOffsets[part] = handle.CFrame:Inverse() * part.CFrame
-    end
-
-    for _, part in ipairs(gunParts) do
-        part.Anchored = false
-        part.CanCollide = false
-        part.Massless = true
-        if part ~= handle then
-            partWeld = Instance.new("Weld")
-            partWeld.Part0 = handle
-            partWeld.Part1 = part
-            partWeld.C0 = relativeOffsets[part]
-            partWeld.C1 = CFrame.new()
-            partWeld.Parent = handle
-        end
-    end
-
-    handle.Name = "Handle"
-    gunWeld = Instance.new("Weld")
-    gunWeld.Name = "RightGrip"
-    gunWeld.Part0 = arm
-    gunWeld.Part1 = handle
-    gunWeld.C0 = GUN_ARM_OFFSET
-    gunWeld.C1 = CFrame.new()
-    gunWeld.Parent = handle
-
-    newHolder.Parent = character
-    gunHolder = newHolder
 end
 
-characterConn = LocalPlayer.CharacterAdded:Connect(function(character)
-    task.delay(MORPH_DELAY, function()
-        if character.Parent then
-            attachGun(character)
+function showGun()
+    local character = LocalPlayer.Character
+    if character then
+        attachGunToRightArm(character)
+    end
+end
+
+function startGunAnimation(holder, handle, offsets)
+    stopGunAnimation()
+
+    local weldOf = {}
+    for _, w in ipairs(handle:GetChildren()) do
+        if w:IsA("Weld") and w.Part1 then
+            weldOf[w.Part1] = w
+        end
+    end
+
+    local swirl, glass, light = {}, nil, nil
+    for _, d in ipairs(holder:GetDescendants()) do
+        if d:IsA("BasePart") then
+            if d.Name == "Swirl" and weldOf[d] and offsets[d] then
+                table.insert(swirl, { weld = weldOf[d], base = offsets[d] })
+            elseif d.Name == "DomeGlass" then
+                glass = d
+            end
+        elseif d:IsA("PointLight") and d.Name == "DomeLight" then
+            light = d
+        end
+    end
+
+    local pivotPos = GUN_DOME_CENTER * GUN_SCALE
+    gunAnimConn = RunService.Heartbeat:Connect(function()
+        if not holder.Parent then
+            stopGunAnimation()
+            return
+        end
+        local t = os.clock()
+        local shown = glass ~= nil and glass.Transparency < 0.99
+        if light then
+            light.Enabled = shown
+            light.Brightness = 1.1 + 0.35 * math.sin(t * 5.5)
+        end
+        if shown then
+            local spin = CFrame.new(pivotPos) * CFrame.Angles(t * 2.2, 0, 0) * CFrame.new(-pivotPos)
+            for _, s in ipairs(swirl) do
+                s.weld.C0 = spin * s.base
+            end
         end
     end)
+end
+
+function attachGunToRightArm(character)
+    if not character then
+        warn("[RickPortal] attachGunToRightArm needs a character")
+        return nil
+    end
+
+    local rightArm = character:FindFirstChild("Right Arm")
+    if not rightArm or not rightArm:IsA("BasePart") then
+        warn('[RickPortal] Could not find a BasePart named "Right Arm" on this character')
+        return nil
+    end
+
+    hideGun()
+
+    local template = loadGunTemplate()
+    if not template then
+        return nil
+    end
+
+    local holder = template:Clone()
+    holder.Name = "PortalGun"
+    local handle = holder:FindFirstChild("Handle")
+    if not handle or not handle:IsA("BasePart") then
+        holder:Destroy()
+        warn('[RickPortal] PortalGun model is missing its "Handle" part')
+        return nil
+    end
+
+    local mountOffset = CFrame.new(0, -rightArm.Size.Y / 2, 0)
+        * CFrame.Angles(math.rad(-90), 0, 0)
+    local targetHandleCFrame = rightArm.CFrame * mountOffset
+    local transform = targetHandleCFrame * handle.CFrame:Inverse()
+
+    for _, part in ipairs(holder:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CFrame = transform * part.CFrame
+        end
+    end
+
+    holder.Parent = rightArm
+
+    local armWeld = Instance.new("Weld")
+    armWeld.Name = "PortalGunArmWeld"
+    armWeld.Part0 = rightArm
+    armWeld.Part1 = handle
+    armWeld.C0 = mountOffset
+    armWeld.C1 = CFrame.new()
+    armWeld.Parent = rightArm
+
+    local offsets = {}
+    for _, weld in ipairs(handle:GetChildren()) do
+        if weld:IsA("Weld") and weld.Part1 then
+            offsets[weld.Part1] = weld.C0
+        end
+    end
+
+    gunHolder = holder
+    gunArmWeld = armWeld
+    startGunAnimation(holder, handle, offsets)
+    return holder
+end
+
+characterConn = LocalPlayer.CharacterAdded:Connect(function()
+    hideGun()
 end)
 
-if LocalPlayer.Character then
-    task.spawn(attachGun, LocalPlayer.Character)
-end
+task.spawn(loadGunTemplate)
 
 function buildPortalButton()
     PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -4260,14 +4570,17 @@ local function play(deathMode, deadChar)
 	if meshFake and headPiece then
 		meshOffset = headPiece.fake.CFrame:ToObjectSpace(meshFake.CFrame)
 	end
-	local gunFake, gunFollowers, armPiece = clone:FindFirstChild("RickPortalGun"), {}, nil
+	local gunFollowers, armPiece = {}, nil
 	for _, p in ipairs(limbs) do
 		if p.name == "Right Arm" then armPiece = p end
 	end
-	if gunFake and armPiece then
-		for _, d in ipairs(gunFake:GetDescendants()) do
-			if d:IsA("BasePart") then
-				gunFollowers[#gunFollowers + 1] = { part = d, offset = armPiece.fake.CFrame:ToObjectSpace(d.CFrame) }
+	if armPiece then
+		local gunFake = armPiece.fake:FindFirstChild("PortalGun")
+		if gunFake then
+			for _, d in ipairs(gunFake:GetDescendants()) do
+				if d:IsA("BasePart") then
+					gunFollowers[#gunFollowers + 1] = { part = d, offset = armPiece.fake.CFrame:ToObjectSpace(d.CFrame) }
+				end
 			end
 		end
 	end
@@ -5023,14 +5336,8 @@ _G.RickPortal = {
             bloom:Destroy()
             bloom = nil
         end
-        if gunHolder then
-            gunHolder:Destroy()
-            gunHolder = nil
-        end
-        if gunTemplate then
-            gunTemplate:Destroy()
-            gunTemplate = nil
-        end
+        hideGun()
+        gunTemplate = nil
         for p in pairs(portals) do
             destroyPortal(p)
         end
