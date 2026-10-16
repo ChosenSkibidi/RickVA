@@ -106,8 +106,8 @@ VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = t
 -- Death flow: you explode where you die and your corpse stays there. You respawn hidden on top of the corpse, and
 -- after the 0.4s respawn delay the corpse regenerates into you, right where you died.
 DEATH_TP_ENABLED         = true
-DEATH_TP_DELAY           = 0.2   -- extra seconds you wait after respawning before you get sent back to where you died
-MORPH_DELAY              = 0.3   -- everything that used to run the instant you respawn now waits this long (same moment as the morph)
+DEATH_TP_DELAY           = 0.5  -- extra seconds you wait after respawning before you get sent back to where you died
+MORPH_DELAY              = 0.6   -- everything that used to run the instant you respawn now waits this long (same moment as the morph)
 
 -- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
 -- notification pops up. Press Yes and a portal opens under your feet and sends you
