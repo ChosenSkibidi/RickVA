@@ -101,6 +101,27 @@ BLOOM_INTENSITY  = 0.8
 BLOOM_SIZE       = 30
 BLOOM_THRESHOLD  = 0.9
 
+-- Portal VFX: every portal gets these (the one you shoot AND the exit portals)
+PORTAL_FX_ENABLED           = true
+PORTAL_FX_CORE_COLOR        = Color3.fromRGB(225, 255, 215)  -- hot white-green core of flashes and spark tips
+PORTAL_FX_RIM_SPARKS        = 34    -- sparks per second thrown off the rim while open
+PORTAL_FX_INFLOW            = 22    -- particles per second streaming into the portal
+PORTAL_FX_MIST              = 12    -- soft green vapour puffs per second drifting off the rim
+PORTAL_FX_RIPPLE_EVERY      = 0.9   -- seconds between the soft rings that breathe out of an open portal
+PORTAL_FX_OPEN_SPARKS       = 70    -- sparks in the opening burst
+PORTAL_FX_OPEN_BOOST        = 5     -- multiplier on rim sparks + inflow while the portal is opening
+PORTAL_FX_OPEN_BOOST_TIME   = 0.4   -- seconds that boost lasts
+PORTAL_FX_CLOSE_INFLOW_MULT = 4     -- inflow multiplier while the portal collapses
+PORTAL_FX_CLOSE_SPARKS      = 26    -- sparks in the snap-shut pop (per side)
+PORTAL_FX_DEEP_COLOR        = Color3.fromRGB(35, 190, 70)    -- deep green of the mist, glowing rim and spark tails
+PORTAL_FX_LIME_COLOR        = Color3.fromRGB(175, 255, 120)  -- lime mid-tone of sparks, rays and arcs
+PORTAL_FX_ARCS              = 2.4   -- lightning arcs per second crackling off the rim while open
+PORTAL_FX_ARC_LENGTH        = 3.2   -- studs an arc reaches out into the air
+PORTAL_FX_RIM_GLOW          = false -- soft pulsing glow ring hugging the portal edge
+PORTAL_FX_BLOOM_PULSE       = 2.0   -- bloom flash multiplier when a portal opens (1 = off)
+ORB_FX_SATELLITES           = true  -- two glowing motes corkscrewing around the orb in flight
+ORB_FX_SPARKS               = 150   -- sparks per second the orb sheds in flight
+
 -- Areas: teleport spots (HumanoidRootPart CFrames).
 AREAS = {
     { name = "Arena",              cframe = CFrame.new(65.85848999023438, 440.75439453125, 62.807456970214844) },
@@ -601,6 +622,731 @@ function orbPop(pos, fromSize, toSize, life, color)
     tween:Play()
 end
 
+-- ====================================================================================================
+-- PORTAL GUN VFX (all of it lives in this file)
+--   gun launch -> orb flight (halo, comet tail, corkscrew motes, shed sparks) -> impact at the shoot point
+--   -> portal opening (flash, shockwave rings, rays, lightning, spark burst) -> idle (rim sparks, inflow,
+--   mist, breathing ripples, crackling arcs, glowing rim, flickering light) -> collapse + snap-shut pop
+-- Every call site wraps these in pcall, so a vfx error can never stop a portal from opening.
+-- ====================================================================================================
+PFX_TEX_SPARK = "rbxasset://textures/particles/sparkles_main.dds"
+PFX_TEX_SMOKE = "rbxasset://textures/particles/smoke_main.dds"
+PFX_RING_FILL = 0.8   -- the ring circle covers this fraction of its part (leaves room for the stroke)
+pfxRoot = nil
+pfxWarned = false
+pfxBloomTween = nil
+
+function pfxCall(fn, ...)
+    local ok, err = pcall(fn, ...)
+    if not ok and not pfxWarned then
+        pfxWarned = true
+        warn("[RickPortal] vfx error: " .. tostring(err))
+    end
+    return ok
+end
+
+function pfxFolder()
+    if pfxRoot and pfxRoot.Parent then
+        return pfxRoot
+    end
+    pfxRoot = Instance.new("Folder")
+    pfxRoot.Name = "RickPortalFX"
+    pfxRoot.Parent = workspace
+    return pfxRoot
+end
+
+function pfxCleanup()
+    if pfxBloomTween then
+        pfxBloomTween:Cancel()
+        pfxBloomTween = nil
+    end
+    if pfxRoot then
+        pfxRoot:Destroy()
+        pfxRoot = nil
+    end
+end
+
+function pfxRand(a, b)
+    return a + (b - a) * math.random()
+end
+
+-- CFrame at pos looking along dir (safe for straight up / down / zero)
+function pfxLook(pos, dir)
+    if dir.Magnitude < 1e-3 then
+        dir = Vector3.yAxis
+    end
+    local up = math.abs(dir.Unit.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+    return CFrame.lookAt(pos, pos + dir, up)
+end
+
+function pfxCamFar(pos, dist)
+    local cam = workspace.CurrentCamera
+    return cam ~= nil and (cam.CFrame.Position - pos).Magnitude > dist
+end
+
+function pfxPart(shape, size, color, transparency, cf, life)
+    local part = Instance.new("Part")
+    part.Shape = shape
+    part.Material = Enum.Material.Neon
+    part.Color = color
+    part.Transparency = transparency
+    part.Size = size
+    part.Anchored = true
+    part.CanCollide = false
+    part.CanTouch = false
+    part.CanQuery = false
+    part.CastShadow = false
+    part.CFrame = cf
+    part.Parent = pfxFolder()
+    if life then
+        Debris:AddItem(part, life)
+    end
+    return part
+end
+
+function pfxTween(inst, time, goal, style, direction)
+    local tween = TweenService:Create(
+        inst,
+        TweenInfo.new(time, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out),
+        goal
+    )
+    tween:Play()
+    return tween
+end
+
+function pfxEmitter(parent, o)
+    local e = Instance.new("ParticleEmitter")
+    e.Texture = o.tex or PFX_TEX_SPARK
+    e.Color = o.color or ColorSequence.new({
+        ColorSequenceKeypoint.new(0, PORTAL_FX_CORE_COLOR),
+        ColorSequenceKeypoint.new(0.35, PORTAL_FX_LIME_COLOR),
+        ColorSequenceKeypoint.new(1, GLOW_COLOR),
+    })
+    e.Size = o.size or NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) })
+    e.Transparency = o.transp or NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.7, 0.2),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    e.Lifetime = o.life or NumberRange.new(0.4, 0.8)
+    e.Speed = o.speed or NumberRange.new(4, 12)
+    e.SpreadAngle = o.spread or Vector2.new(30, 30)
+    e.Drag = o.drag or 0
+    e.Acceleration = o.accel or Vector3.zero
+    e.Rotation = o.rot or NumberRange.new(0, 360)
+    e.RotSpeed = o.rotSpeed or NumberRange.new(0, 0)
+    e.LightEmission = o.light or 1
+    e.LightInfluence = 0
+    e.EmissionDirection = Enum.NormalId.Front
+    e.Rate = o.rate or 0
+    e.Parent = parent
+    return e
+end
+
+-- hollow glowing circle on a flat invisible part (soft outer stroke + crisp core stroke, both faces)
+function pfxRingBuild(cf, size, color, thick, bright)
+    local ring = pfxPart(Enum.PartType.Block, Vector3.new(size, size, 0.05), color, 1, cf)
+    local strokes = {}
+    for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
+        local gui = Instance.new("SurfaceGui")
+        gui.Face = face
+        gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+        gui.CanvasSize = Vector2.new(512, 512)
+        gui.LightInfluence = 0
+        gui.Brightness = bright or 3
+        gui.AlwaysOnTop = false
+        gui.Parent = ring
+
+        local layers = {
+            { thick * 2.4, color, 0.72 },
+            { thick, PORTAL_FX_CORE_COLOR, 0.1 },
+        }
+        for _, layer in ipairs(layers) do
+            local circle = Instance.new("Frame")
+            circle.AnchorPoint = Vector2.new(0.5, 0.5)
+            circle.Position = UDim2.fromScale(0.5, 0.5)
+            circle.Size = UDim2.fromScale(PFX_RING_FILL, PFX_RING_FILL)
+            circle.BackgroundTransparency = 1
+            circle.Parent = gui
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0.5, 0)
+            corner.Parent = circle
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = layer[2]
+            stroke.Thickness = layer[1]
+            stroke.Transparency = layer[3]
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            stroke.Parent = circle
+            strokes[#strokes + 1] = stroke
+        end
+    end
+    return ring, strokes
+end
+
+-- expanding shockwave ring. s0/s1 = visible circle diameter. move = optional slide along the ring's
+-- own Z while it expands (negative = toward the front of the portal / along the shot)
+function pfxRing(cf, s0, s1, time, color, thick, move, bright)
+    local k = 1 / PFX_RING_FILL
+    local ring, strokes = pfxRingBuild(cf, s0 * k, color, thick or 14, bright)
+    Debris:AddItem(ring, time + 0.2)
+    local goal = { Size = Vector3.new(s1 * k, s1 * k, 0.05) }
+    if move then
+        goal.CFrame = cf * CFrame.new(0, 0, move)
+    end
+    pfxTween(ring, time, goal, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    for _, stroke in ipairs(strokes) do
+        pfxTween(stroke, time, { Transparency = 1, Thickness = stroke.Thickness * 0.25 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    end
+    return ring
+end
+
+-- glowing ball that swells and fades, with a light that fades with it
+function pfxFlash(pos, s0, s1, time, color, range, bright)
+    local ball = pfxPart(Enum.PartType.Ball, Vector3.new(s0, s0, s0), color or PORTAL_FX_CORE_COLOR, 0.05, CFrame.new(pos), time + 0.2)
+    local light = Instance.new("PointLight")
+    light.Color = GLOW_COLOR
+    light.Range = range or 20
+    light.Brightness = bright or 5
+    light.Shadows = false
+    light.Parent = ball
+    pfxTween(light, time, { Brightness = 0 })
+    pfxTween(ball, time, { Size = Vector3.new(s1, s1, s1), Transparency = 1 })
+end
+
+-- one-shot cone of sparks along cf's front (-Z)
+function pfxSparks(cf, count, spreadDeg, speedMin, speedMax, size, gravity)
+    local anchor = pfxPart(Enum.PartType.Block, Vector3.new(0.2, 0.2, 0.2), GLOW_COLOR, 1, cf, 2)
+    local emitter = pfxEmitter(anchor, {
+        size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size or 0.5), NumberSequenceKeypoint.new(1, 0) }),
+        life = NumberRange.new(0.35, 0.85),
+        speed = NumberRange.new(speedMin, speedMax),
+        spread = Vector2.new(spreadDeg, spreadDeg),
+        drag = 2.2,
+        accel = Vector3.new(0, gravity or -14, 0),
+    })
+    emitter:Emit(count)
+end
+
+-- thin bars that shoot out of a ring edge in the plane of cf (cracks in the air)
+function pfxRays(cf, count, r0, lenMin, lenMax, time)
+    for i = 1, count do
+        local ang = (i + math.random() * 0.8) / count * math.pi * 2
+        local dir = (cf.Rotation * Vector3.new(math.cos(ang), math.sin(ang), -0.12)).Unit
+        local start = cf * Vector3.new(math.cos(ang) * r0, math.sin(ang) * r0, 0)
+        local len = pfxRand(lenMin, lenMax)
+        local thick = pfxRand(0.06, 0.16)
+        local bar = pfxPart(
+            Enum.PartType.Block,
+            Vector3.new(thick, thick, 0.2),
+            i % 2 == 0 and PORTAL_FX_CORE_COLOR or PORTAL_FX_LIME_COLOR,
+            0.05,
+            pfxLook(start + dir * 0.1, dir),
+            time + 0.2
+        )
+        pfxTween(bar, time, {
+            Size = Vector3.new(thick * 0.25, thick * 0.25, len),
+            CFrame = pfxLook(start + dir * (len * 0.5), dir),
+        }, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        pfxTween(bar, time, { Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+    end
+end
+
+-- jagged lightning bolt from a to b (glow + white core per segment)
+function pfxArc(a, b, segs, jit, life, thick)
+    local dir = b - a
+    local len = dir.Magnitude
+    if len < 0.2 then return end
+    local fwd = dir / len
+    local side = fwd:Cross(Vector3.yAxis)
+    if side.Magnitude < 0.05 then
+        side = fwd:Cross(Vector3.xAxis)
+    end
+    side = side.Unit
+    local up = fwd:Cross(side)
+    local pts = { a }
+    for i = 1, segs - 1 do
+        local f = i / segs
+        local off = (side * (math.random() * 2 - 1) + up * (math.random() * 2 - 1)) * jit * (len / 3) * math.sin(f * math.pi)
+        pts[#pts + 1] = a + dir * f + off
+    end
+    pts[#pts + 1] = b
+    for i = 1, #pts - 1 do
+        local p0, p1 = pts[i], pts[i + 1]
+        local l = (p1 - p0).Magnitude
+        if l > 0.02 then
+            local cf = CFrame.lookAt((p0 + p1) * 0.5, p1)
+            local glow = pfxPart(Enum.PartType.Block, Vector3.new(thick * 3, thick * 3, l), GLOW_COLOR, 0.55, cf, life + 0.15)
+            local core = pfxPart(Enum.PartType.Block, Vector3.new(thick, thick, l), PORTAL_FX_CORE_COLOR, 0, cf, life + 0.15)
+            pfxTween(glow, life, { Transparency = 1, Size = Vector3.new(thick * 0.5, thick * 0.5, l) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+            pfxTween(core, life, { Transparency = 1, Size = Vector3.new(thick * 0.3, thick * 0.3, l) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        end
+    end
+end
+
+function pfxBloomPulse(mult, time)
+    if not bloom or not bloom.Parent or mult <= 1 then return end
+    if pfxBloomTween then
+        pfxBloomTween:Cancel()
+    end
+    bloom.Intensity = BLOOM_INTENSITY * mult
+    pfxBloomTween = pfxTween(bloom, time, { Intensity = BLOOM_INTENSITY }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+end
+
+----------------------------------------------------------------------------------------------- orb
+-- Everything the orb carries: a soft halo, a fat comet tail, two motes corkscrewing around it, sparks it
+-- sheds, and (while it charges inside the gun's dot) a ring that collapses into the dot.
+function pfxOrbCreate(startPos)
+    local o = {
+        born = os.clock(), lastT = os.clock(), last = startPos, pos = startPos,
+        dir = Vector3.zAxis, flying = false, acc = 0, sats = {},
+    }
+    local cam = workspace.CurrentCamera
+
+    o.halo = pfxPart(Enum.PartType.Ball, Vector3.new(0.2, 0.2, 0.2), GLOW_COLOR, 0.8, CFrame.new(startPos))
+    o.haloA0 = Instance.new("Attachment")
+    o.haloA0.Parent = o.halo
+    o.haloA1 = Instance.new("Attachment")
+    o.haloA1.Parent = o.halo
+    o.tail = Instance.new("Trail")
+    o.tail.Attachment0 = o.haloA0
+    o.tail.Attachment1 = o.haloA1
+    o.tail.Color = ColorSequence.new(PORTAL_FX_LIME_COLOR, PORTAL_FX_DEEP_COLOR)
+    o.tail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+    o.tail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+    o.tail.Lifetime = ORB_TRAIL_LIFETIME * 1.8
+    o.tail.MinLength = 0.02
+    o.tail.LightEmission = 1
+    o.tail.LightInfluence = 0
+    o.tail.FaceCamera = true
+    o.tail.Enabled = false
+    o.tail.Parent = o.halo
+
+    o.sparks = pfxEmitter(o.halo, {
+        size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.34), NumberSequenceKeypoint.new(1, 0) }),
+        life = NumberRange.new(0.25, 0.55),
+        speed = NumberRange.new(2, 8),
+        spread = Vector2.new(180, 180),
+        drag = 2,
+    })
+
+    if ORB_FX_SATELLITES then
+        for i = 1, 2 do
+            local ball = pfxPart(Enum.PartType.Ball, Vector3.new(0.12, 0.12, 0.12), i == 1 and PORTAL_FX_CORE_COLOR or PORTAL_FX_LIME_COLOR, 1, CFrame.new(startPos))
+            local a0 = Instance.new("Attachment")
+            a0.Parent = ball
+            local a1 = Instance.new("Attachment")
+            a1.Parent = ball
+            local trail = Instance.new("Trail")
+            trail.Attachment0 = a0
+            trail.Attachment1 = a1
+            trail.Color = ColorSequence.new(i == 1 and PORTAL_FX_CORE_COLOR or PORTAL_FX_LIME_COLOR, GLOW_COLOR)
+            trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+            trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0) })
+            trail.Lifetime = ORB_TRAIL_LIFETIME * 1.2
+            trail.MinLength = 0.02
+            trail.LightEmission = 1
+            trail.LightInfluence = 0
+            trail.FaceCamera = true
+            trail.Enabled = false
+            trail.Parent = ball
+            o.sats[i] = { ball = ball, a0 = a0, a1 = a1, trail = trail, phase = (i - 1) * math.pi }
+        end
+    end
+
+    local diam = 2.6 / PFX_RING_FILL
+    o.chargeRing, o.chargeStrokes = pfxRingBuild(
+        cam and CFrame.lookAt(startPos, cam.CFrame.Position) or CFrame.new(startPos),
+        diam, GLOW_COLOR, 12, 3
+    )
+    return o
+end
+
+function pfxOrbStep(o, pos, d)
+    local now = os.clock()
+    local dt = math.clamp(now - o.lastT, 0, 0.1)
+    o.lastT = now
+
+    local delta = pos - o.last
+    if delta.Magnitude > 1e-3 then
+        local blended = o.dir:Lerp(delta.Unit, 0.6)
+        o.dir = blended.Magnitude > 1e-3 and blended.Unit or delta.Unit
+    end
+    o.last = pos
+    o.pos = pos
+
+    local hs = d * 2.3 * (1 + 0.12 * math.sin((now - o.born) * 38))
+    o.halo.Size = Vector3.new(hs, hs, hs)
+    o.halo.Position = pos
+    o.haloA0.Position = Vector3.new(0, hs * 0.5, 0)
+    o.haloA1.Position = Vector3.new(0, -hs * 0.5, 0)
+
+    if not o.flying then
+        -- charging: a ring collapses into the dot
+        local ring = o.chargeRing
+        if ring then
+            local h = math.clamp((d - ORB_START_SIZE) / math.max(ORB_CHARGE_SIZE - ORB_START_SIZE, 0.01), 0, 1)
+            local diam = (2.6 * (1 - h) + 0.35) / PFX_RING_FILL
+            local cam = workspace.CurrentCamera
+            ring.Size = Vector3.new(diam, diam, 0.05)
+            ring.CFrame = cam and CFrame.lookAt(pos, cam.CFrame.Position) or CFrame.new(pos)
+        end
+        return
+    end
+
+    -- two motes corkscrew around the flight line
+    local fwd = o.dir
+    local side = fwd:Cross(Vector3.yAxis)
+    if side.Magnitude < 0.05 then
+        side = fwd:Cross(Vector3.xAxis)
+    end
+    side = side.Unit
+    local up = fwd:Cross(side)
+    local ang = (now - o.born) * 30
+    local radius = d * 0.62 + 0.1
+    local sd = math.clamp(d * 0.32, 0.08, 0.3)
+    for _, s in ipairs(o.sats) do
+        local a = ang + s.phase
+        s.ball.Position = pos + (side * math.cos(a) + up * math.sin(a)) * radius
+        s.ball.Size = Vector3.new(sd, sd, sd)
+        s.a0.Position = Vector3.new(0, sd * 0.5, 0)
+        s.a1.Position = Vector3.new(0, -sd * 0.5, 0)
+    end
+
+    -- shed sparks
+    o.acc = o.acc + dt * ORB_FX_SPARKS
+    local n = math.floor(o.acc)
+    if n > 0 then
+        o.acc = o.acc - n
+        o.sparks:Emit(math.min(n, 12))
+    end
+end
+
+-- the orb lets go of the dot: flash, two shockwave rings along the shot, spark cone, idle sparkle on the dome
+function pfxLaunch(o, p0, aim)
+    o.flying = true
+    if o.chargeRing then
+        o.chargeRing:Destroy()
+        o.chargeRing = nil
+    end
+    for _, s in ipairs(o.sats) do
+        s.ball.Transparency = 0.05
+        s.trail.Enabled = true
+    end
+    o.tail.Enabled = true
+
+    local cf = pfxLook(p0, aim)
+    pfxFlash(p0, 0.5, 2.6, 0.18, PORTAL_FX_CORE_COLOR, 16, 6)
+    pfxRing(cf, 0.8, 6, 0.24, GLOW_COLOR, 14)
+    pfxRing(cf * CFrame.new(0, 0, -0.6), 0.5, 4.2, 0.2, PORTAL_FX_CORE_COLOR, 10)
+    pfxSparks(cf, 26, 38, 16, 42, 0.45)
+    pfxSparks(cf, 10, 180, 4, 12, 0.3)
+
+    local dot = getGunDotPart()
+    if dot and not dot:FindFirstChild("PortalIdleFx") then
+        local idle = pfxEmitter(dot, {
+            size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.14), NumberSequenceKeypoint.new(1, 0) }),
+            life = NumberRange.new(0.5, 1),
+            speed = NumberRange.new(0.4, 1.6),
+            spread = Vector2.new(180, 180),
+            accel = Vector3.new(0, 1.5, 0),
+            rate = 14,
+        })
+        idle.Name = "PortalIdleFx"
+    end
+end
+
+-- the orb arrives: hot flash, shockwave, sparks thrown back at the shooter, cracks in the air
+function pfxImpact(pos, dir)
+    local cf = pfxLook(pos, dir)
+    pfxFlash(pos, 0.8, 5.5, 0.28, PORTAL_FX_CORE_COLOR, 24, 7)
+    pfxRing(cf, 1.2, 10, 0.34, GLOW_COLOR, 16)
+    task.delay(0.06, function()
+        pfxCall(pfxRing, cf, 0.8, 7, 0.3, PORTAL_FX_LIME_COLOR, 10)
+    end)
+    pfxSparks(pfxLook(pos, -dir), 34, 70, 10, 30, 0.5)
+    pfxSparks(cf, 12, 180, 4, 14, 0.35)
+    pfxRays(cf, 8, 0.4, 1.5, 3.2, 0.25)
+end
+
+function pfxOrbFinish(o)
+    if o.chargeRing then
+        o.chargeRing:Destroy()
+        o.chargeRing = nil
+    end
+    o.tail.Enabled = false
+    o.sparks.Enabled = false
+    o.halo.Transparency = 1
+    Debris:AddItem(o.halo, 1)
+    for _, s in ipairs(o.sats) do
+        s.trail.Enabled = false
+        s.ball.Transparency = 1
+        Debris:AddItem(s.ball, 1)
+    end
+end
+
+------------------------------------------------------------------------------------------- portal
+-- puts an attachment at lpos (portal-local), aims it along ldir and emits n particles from it
+function pfxEmitFrom(att, emitter, lpos, ldir, n)
+    att.CFrame = pfxLook(lpos, ldir)
+    emitter:Emit(n or 1)
+end
+
+function pfxTake(fx, key, perSecond, dt, cap)
+    local v = fx[key] + perSecond * dt
+    local n = math.floor(v)
+    fx[key] = v - n
+    return math.min(n, cap)
+end
+
+-- spark thrown off the rim (out and a little toward whichever face it picked)
+function pfxRimSpark(fx, rx, ry, burst)
+    local a = math.random() * math.pi * 2
+    local c, s = math.cos(a), math.sin(a)
+    local zs = math.random() < 0.5 and -1 or 1
+    local lpos = Vector3.new(c * rx, s * ry, 0)
+    local ldir = Vector3.new(c * 0.9, s * 0.9, zs * pfxRand(0.15, 0.75))
+    if burst then
+        pfxEmitFrom(fx.burstAtt, fx.burstEm, lpos, ldir, 1)
+    else
+        pfxEmitFrom(fx.rimAtt, fx.rimEm, lpos, ldir, 1)
+    end
+end
+
+-- streak that starts out in front of / behind the portal and gets pulled in, with a slight spiral
+function pfxInflow(fx, rBase)
+    local a = math.random() * math.pi * 2
+    local c, s = math.cos(a), math.sin(a)
+    local r = rBase * pfxRand(1.5, 2.5)
+    local zs = math.random() < 0.5 and -1 or 1
+    local lpos = Vector3.new(c * r, s * r, zs * pfxRand(0.6, 3.2))
+    local twist = rBase * 0.18
+    local target = Vector3.new(-s * twist, c * twist, 0)
+    pfxEmitFrom(fx.inflowAtt, fx.inflowEm, lpos, target - lpos, 1)
+end
+
+function pfxMist(fx, rx, ry)
+    local a = math.random() * math.pi * 2
+    local c, s = math.cos(a), math.sin(a)
+    local zs = math.random() < 0.5 and -0.5 or 0.5
+    pfxEmitFrom(fx.mistAtt, fx.mistEm, Vector3.new(c * rx * 0.95, s * ry * 0.95, 0), Vector3.new(c, s, zs), 1)
+end
+
+-- lightning off the rim: either out into the air, or across the face of the portal
+function pfxPortalArc(frame, rx, ry, chord)
+    local cf = frame.CFrame
+    local a = math.random() * math.pi * 2
+    local c, s = math.cos(a), math.sin(a)
+    local a0 = cf * Vector3.new(c * rx, s * ry, 0)
+    local b
+    if chord then
+        local a2 = a + math.pi + pfxRand(-0.9, 0.9)
+        local zf = math.random() < 0.5 and -0.12 or 0.12
+        a0 = cf * Vector3.new(c * rx * 0.95, s * ry * 0.95, zf)
+        b = cf * Vector3.new(math.cos(a2) * rx * 0.95, math.sin(a2) * ry * 0.95, zf)
+    else
+        local zs = math.random() < 0.5 and -1 or 1
+        local out = Vector3.new(c, s, zs * pfxRand(0.1, 0.9)).Unit
+        b = a0 + (cf.Rotation * out) * PORTAL_FX_ARC_LENGTH * pfxRand(0.55, 1.1)
+    end
+    pfxArc(a0, b, 5, 0.45, 0.12, 0.09)
+end
+
+function pfxPortalCreate(p, frame)
+    if not PORTAL_FX_ENABLED then return end
+    local fx = {
+        born = os.clock(), last = os.clock(), seed = math.random() * 50 + 0.37,
+        rim = 0, inflow = 0, mist = 0, arc = 0, ripple = 0.35, swallow = -10,
+    }
+    p.fx = fx
+
+    local function att(name)
+        local a = Instance.new("Attachment")
+        a.Name = name
+        a.Parent = frame
+        return a
+    end
+    fx.rimAtt, fx.inflowAtt, fx.mistAtt, fx.burstAtt = att("RimFx"), att("InflowFx"), att("MistFx"), att("BurstFx")
+
+    fx.rimEm = pfxEmitter(fx.rimAtt, {
+        size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.34), NumberSequenceKeypoint.new(1, 0) }),
+        life = NumberRange.new(0.45, 1),
+        speed = NumberRange.new(4, 13),
+        spread = Vector2.new(24, 24),
+        drag = 1.4,
+        accel = Vector3.new(0, -11, 0),
+    })
+    fx.burstEm = pfxEmitter(fx.burstAtt, {
+        size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 0) }),
+        life = NumberRange.new(0.5, 1.2),
+        speed = NumberRange.new(14, 40),
+        spread = Vector2.new(30, 30),
+        drag = 2.4,
+        accel = Vector3.new(0, -16, 0),
+    })
+    fx.inflowEm = pfxEmitter(fx.inflowAtt, {
+        size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.05),
+            NumberSequenceKeypoint.new(0.25, 0.26),
+            NumberSequenceKeypoint.new(1, 0.04),
+        }),
+        transp = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.2, 0.1),
+            NumberSequenceKeypoint.new(0.85, 0.1),
+            NumberSequenceKeypoint.new(1, 1),
+        }),
+        life = NumberRange.new(0.45, 0.8),
+        speed = NumberRange.new(11, 20),
+        spread = Vector2.new(4, 4),
+    })
+    fx.mistEm = pfxEmitter(fx.mistAtt, {
+        tex = PFX_TEX_SMOKE,
+        color = ColorSequence.new(PORTAL_FX_LIME_COLOR, PORTAL_FX_DEEP_COLOR),
+        size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 4.2) }),
+        transp = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.2, 0.78),
+            NumberSequenceKeypoint.new(1, 1),
+        }),
+        life = NumberRange.new(1.1, 2),
+        speed = NumberRange.new(0.8, 2.6),
+        spread = Vector2.new(60, 60),
+        drag = 1,
+        accel = Vector3.new(0, 0.8, 0),
+        rotSpeed = NumberRange.new(-35, 35),
+        light = 0.6,
+    })
+
+    if PORTAL_FX_RIM_GLOW then
+        fx.glow, fx.glowStrokes = pfxRingBuild(frame.CFrame, 1, PORTAL_FX_DEEP_COLOR, 11, 3.2)
+        fx.glow.Parent = frame
+    end
+
+    pfxPortalBurst(p, frame)
+end
+
+-- the opening: flash, three staggered shockwaves, rays, lightning, a big spark burst, a puff of mist
+function pfxPortalBurst(p, frame)
+    local fx = p.fx
+    local cf = frame.CFrame
+    local base = PORTAL_SIZE
+    local rx, ry = base * 0.5 * widthScale, base * 0.5
+
+    pfxFlash(cf.Position, 2, base * 1.1, 0.4, PORTAL_FX_CORE_COLOR, 30, 8)
+    for i = 1, 3 do
+        task.delay((i - 1) * 0.07, function()
+            pfxCall(
+                pfxRing, cf, base * 0.35, base * (1.5 + i * 0.35), 0.5 + i * 0.12,
+                i == 2 and PORTAL_FX_CORE_COLOR or GLOW_COLOR, 16 - i * 2, -0.5 * i
+            )
+        end)
+    end
+    pfxRays(cf, 16, base * 0.5, 2.5, 6.5, 0.35)
+    for _ = 1, 6 do
+        pfxPortalArc(frame, rx, ry, false)
+    end
+    for _ = 1, PORTAL_FX_OPEN_SPARKS do
+        pfxRimSpark(fx, rx, ry, true)
+    end
+    for _ = 1, 8 do
+        pfxMist(fx, rx, ry)
+    end
+    pfxBloomPulse(PORTAL_FX_BLOOM_PULSE, 0.7)
+end
+
+-- runs every Heartbeat on the portal
+function pfxPortalUpdate(p, frame)
+    local fx = p.fx
+    if not fx or not frame.Parent then return end
+    local now = os.clock()
+    local dt = math.clamp(now - fx.last, 0, 0.1)
+    fx.last = now
+
+    local cf = frame.CFrame
+    local fw, fh = frame.Size.X, frame.Size.Y
+    local rx, ry = fw * 0.5, fh * 0.5
+    local closing = p.state == "closing"
+    local age = now - fx.born
+    local sizeK = math.clamp(math.max(fw, fh) / PORTAL_SIZE, 0, 1.3)
+    local boost = age < PORTAL_FX_OPEN_BOOST_TIME and PORTAL_FX_OPEN_BOOST or 1
+    local rBase = PORTAL_SIZE * 0.5
+    local swallow = math.clamp(1 - (now - fx.swallow) / 0.45, 0, 1)
+
+    -- glowing rim + flickering light (cheap, runs even when far away)
+    local flick = 0.5 + 0.5 * math.noise(now * 7, fx.seed)
+    if fx.glow then
+        fx.glow.Size = Vector3.new(fw / PFX_RING_FILL, fh / PFX_RING_FILL, 0.05)
+        for i, stroke in ipairs(fx.glowStrokes) do
+            if i % 2 == 1 then
+                stroke.Transparency = 0.82 - 0.28 * flick - 0.3 * swallow
+            else
+                stroke.Transparency = 0.2 + 0.35 * (1 - flick) - 0.15 * swallow
+            end
+        end
+    end
+    if p.light then
+        p.light.Brightness = p.light.Brightness * (0.82 + 0.36 * flick) + swallow * 4
+    end
+
+    if pfxCamFar(cf.Position, 350) then return end
+
+    for _ = 1, pfxTake(fx, "rim", PORTAL_FX_RIM_SPARKS * boost * sizeK * (closing and 0.6 or 1), dt, 14) do
+        pfxRimSpark(fx, rx, ry, false)
+    end
+    for _ = 1, pfxTake(fx, "inflow", PORTAL_FX_INFLOW * boost * (closing and PORTAL_FX_CLOSE_INFLOW_MULT or 1), dt, 24) do
+        pfxInflow(fx, rBase)
+    end
+    for _ = 1, pfxTake(fx, "mist", PORTAL_FX_MIST * sizeK, dt, 4) do
+        pfxMist(fx, rx, ry)
+    end
+
+    local arcRate = PORTAL_FX_ARCS * sizeK * (closing and 3 or 1) * (age < PORTAL_FX_OPEN_BOOST_TIME and 3 or 1)
+    for _ = 1, pfxTake(fx, "arc", arcRate, dt, 2) do
+        pfxCall(pfxPortalArc, frame, rx, ry, math.random() < 0.4)
+    end
+
+    if not closing then
+        fx.ripple = fx.ripple - dt
+        if fx.ripple <= 0 then
+            fx.ripple = PORTAL_FX_RIPPLE_EVERY
+            local diam = math.max(fw, fh)
+            pfxCall(pfxRing, cf, diam, diam * 1.5, 0.95, GLOW_COLOR, 8, -1.8)
+        end
+    end
+end
+
+-- the last frame of the collapse: the portal snaps shut with a pop on both sides
+function pfxPortalSnap(p, frame)
+    if not p.fx then return end
+    local cf = frame.CFrame
+    pfxFlash(cf.Position, 0.5, 3.6, 0.28, PORTAL_FX_CORE_COLOR, 18, 6)
+    pfxRing(cf, 0.6, PORTAL_SIZE * 0.5, 0.35, PORTAL_FX_CORE_COLOR, 12)
+    pfxSparks(cf, PORTAL_FX_CLOSE_SPARKS, 55, 10, 28, 0.42)
+    pfxSparks(cf * CFrame.Angles(0, math.pi, 0), PORTAL_FX_CLOSE_SPARKS, 55, 10, 28, 0.42)
+    pfxSparks(cf, 12, 180, 3, 10, 0.3)
+    for _ = 1, 3 do
+        pfxPortalArc(frame, 1.4, 1.4, false)
+    end
+end
+
+-- someone walks through: the portal flares
+function pfxPortalSwallow(p)
+    local fx = p.fx
+    local frame = p.frame
+    if not fx or not frame or not frame.Parent then return end
+    fx.swallow = os.clock()
+    local cf = frame.CFrame
+    local rx, ry = frame.Size.X * 0.5, frame.Size.Y * 0.5
+    pfxFlash(cf.Position, 3, PORTAL_SIZE * 0.9, 0.3, PORTAL_FX_CORE_COLOR, 26, 7)
+    pfxRing(cf, PORTAL_SIZE * 0.9, PORTAL_SIZE * 1.9, 0.45, PORTAL_FX_CORE_COLOR, 16, -1.2)
+    for _ = 1, 18 do
+        pfxRimSpark(fx, rx, ry, true)
+    end
+    pfxBloomPulse(1.6, 0.45)
+end
+
 -- The orb is born INSIDE the gun's dot and charges there (glued to the dot's live position, so it rides
 -- the arm as it swings up). Then it lets go from wherever the dot is RIGHT NOW with a pop, leaves up out
 -- of the dome, and flies one smooth curve that lands exactly on toPos. Speed is mapped by distance along
@@ -636,6 +1382,16 @@ function shootOrb(fromPos, toPos, travelTime)
     -- green shell + hot white core, a light that follows it, and a trail
     local shell = makeBall(GLOW_COLOR, 0.1)
     local core = makeBall(Color3.fromRGB(235, 255, 225), 0)
+
+    local orbFx = nil
+    if PORTAL_FX_ENABLED then
+        local okFx, resFx = pcall(pfxOrbCreate, lastDot)
+        if okFx then
+            orbFx = resFx
+        else
+            warn("[RickPortal] orb vfx failed: " .. tostring(resFx))
+        end
+    end
 
     local light = Instance.new("PointLight")
     light.Color = GLOW_COLOR
@@ -677,6 +1433,7 @@ function shootOrb(fromPos, toPos, travelTime)
         trailTop.Position = Vector3.new(0, d * 0.5, 0)
         trailBottom.Position = Vector3.new(0, -d * 0.5, 0)
         light.Brightness = 2.2 * math.clamp(d / ORB_PEAK_SIZE, 0, 1)
+        if orbFx then pfxCall(pfxOrbStep, orbFx, pos, d) end
     end
 
     -- progress along the curve (0..1) for flight time x (0..1): starts at ORB_START_SPEED of cruising
@@ -743,6 +1500,7 @@ function shootOrb(fromPos, toPos, travelTime)
         end
 
         orbPop(p0, ORB_CHARGE_SIZE, ORB_PEAK_SIZE * 2.2, 0.14, GLOW_COLOR)
+        if orbFx then pfxCall(pfxLaunch, orbFx, p0, aim) end
         trail.Enabled = true
 
         -- 3) fly the curve
@@ -771,6 +1529,11 @@ function shootOrb(fromPos, toPos, travelTime)
             RunService.RenderStepped:Wait()
         end
     end)
+
+    if orbFx then
+        if ok then pfxCall(pfxImpact, toPos, orbFx.dir) end
+        pfxCall(pfxOrbFinish, orbFx)
+    end
 
     -- the orb is gone, but the trail is left to fade out on its own
     trail.Enabled = false
@@ -847,6 +1610,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
 
     frame.Parent = workspace
     p.frame = frame
+    pfxCall(pfxPortalCreate, p, frame)
     playSounds(OPEN_SOUNDS, frame)
     if decorative and EXIT_SOUND.asset then
         playSounds({ { id = EXIT_SOUND.asset, volume = EXIT_PORTAL_SOUND_VOLUME } }, frame)
@@ -861,6 +1625,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         if area then
             chosenTarget = nil
             p.armed = false
+            pfxCall(pfxPortalSwallow, p)
             hideGun()
             teleportToArea(root, area, p)
             return
@@ -874,6 +1639,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         end
 
         p.armed = false
+        pfxCall(pfxPortalSwallow, p)
         hideGun()
         -- exit portal sits where you used to land; you appear 2 studs behind it, facing the
         -- target, and keep walking forward through it
@@ -961,6 +1727,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             w = PORTAL_SIZE * (1 - TweenService:GetValue(u, Enum.EasingStyle.Back, Enum.EasingDirection.In))
             h = PORTAL_SIZE * (1 - TweenService:GetValue(math.min(u * 1.25, 1), Enum.EasingStyle.Back, Enum.EasingDirection.In))
             if u >= 1 then
+                pfxCall(pfxPortalSnap, p, frame)
                 destroyPortal(p)
                 return
             end
@@ -976,6 +1743,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             lbl.Rotation = rot
         end
         light.Brightness = LIGHT_BRIGHTNESS * math.clamp(w / PORTAL_SIZE, 0, 1.3)
+        if p.fx then pfxCall(pfxPortalUpdate, p, frame) end
     end)
 
     portals[p] = true
@@ -5846,6 +6614,7 @@ _G.RickPortal = {
         for p in pairs(portals) do
             destroyPortal(p)
         end
+        pcall(pfxCleanup)
         _G.RickPortal = nil
     end,
 }
