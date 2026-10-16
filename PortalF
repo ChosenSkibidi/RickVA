@@ -1,0 +1,495 @@
+-- ---------------------------------------------------------------------------------------------
+--  The portal itself
+-- ---------------------------------------------------------------------------------------------
+
+-- Glowing ring drawn on the portal's face (called by makeFace for both sides). Three stacked circles: a wide
+-- soft glow, a mid glow and a thin hot-white core. A gradient on each sweeps around the rim (animated in PFX.step).
+function PFX.faceRing(gui)
+    if not (PORTAL_FX_ENABLED and PORTAL_FX_RING) then
+        return
+    end
+    local layers = {
+        { name = "PFXRingGlow", thick = 26, trans = 0.80, color = GLOW_COLOR, edge = 0.35 },
+        { name = "PFXRingMid", thick = 11, trans = 0.40, color = GLOW_COLOR, edge = 0.2 },
+        { name = "PFXRingCore", thick = 3.5, trans = 0, color = PORTAL_FX_CORE_COLOR, edge = 0.65 },
+    }
+    for _, layer in ipairs(layers) do
+        local circle = Instance.new("Frame")
+        circle.Name = layer.name
+        circle.AnchorPoint = Vector2.new(0.5, 0.5)
+        circle.Position = UDim2.fromScale(0.5, 0.5)
+        circle.Size = UDim2.fromScale(0.86, 0.86)
+        circle.BackgroundTransparency = 1
+        circle.ZIndex = 5
+        circle.Parent = gui
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0.5, 0)
+        corner.Parent = circle
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Name = "Stroke"
+        stroke.Color = layer.color
+        stroke.Thickness = layer.thick
+        stroke.Transparency = layer.trans
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = circle
+
+        local sweep = Instance.new("UIGradient")
+        sweep.Name = "Sweep"
+        sweep.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, PORTAL_FX_DEEP_COLOR),
+            ColorSequenceKeypoint.new(0.5, PORTAL_FX_CORE_COLOR),
+            ColorSequenceKeypoint.new(1, PORTAL_FX_DEEP_COLOR),
+        })
+        sweep.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, layer.edge),
+            NumberSequenceKeypoint.new(0.42, 0),
+            NumberSequenceKeypoint.new(0.58, 0),
+            NumberSequenceKeypoint.new(1, layer.edge),
+        })
+        sweep.Parent = stroke
+    end
+end
+
+function PFX.spinMult(p, t)
+    if not PORTAL_FX_ENABLED then
+        return 1
+    end
+    if p.state == "opening" then
+        local u = math.clamp(t / OPEN_TIME, 0, 1)
+        return 1 + PORTAL_FX_SPIN_BOOST * (1 - u) * (1 - u)
+    elseif p.state == "closing" then
+        local u = math.clamp(t / CLOSE_TIME, 0, 1)
+        return 1 + PORTAL_FX_SPIN_BOOST * u * u
+    end
+    return 1
+end
+
+function PFX.makeComet(fx, parent, index)
+    local part = Instance.new("Part")
+    part.Name = "Comet"
+    part.Shape = Enum.PartType.Ball
+    part.Material = Enum.Material.Neon
+    part.Color = index % 3 == 0 and PORTAL_FX_CORE_COLOR or (index % 3 == 1 and GLOW_COLOR or PORTAL_FX_ACCENT_COLOR)
+    part.Transparency = 1
+    part.Size = Vector3.new(0.2, 0.2, 0.2)
+    part.Anchored = true
+    part.CanCollide = false
+    part.CanTouch = false
+    part.CanQuery = false
+    part.CastShadow = false
+    part.Parent = parent
+
+    local a0 = Instance.new("Attachment")
+    a0.Position = Vector3.new(0, 0.1, 0)
+    a0.Parent = part
+    local a1 = Instance.new("Attachment")
+    a1.Position = Vector3.new(0, -0.1, 0)
+    a1.Parent = part
+
+    local trail = Instance.new("Trail")
+    trail.Attachment0 = a0
+    trail.Attachment1 = a1
+    trail.Color = ColorSequence.new(part.Color, PORTAL_FX_DEEP_COLOR)
+    trail.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.05),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    trail.WidthScale = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    trail.Lifetime = 0.3
+    trail.MinLength = 0.02
+    trail.LightEmission = 1
+    trail.LightInfluence = 0
+    trail.FaceCamera = true
+    trail.Enabled = false
+    trail.Parent = part
+
+    return { part = part, trail = trail, state = "dead", delay = PFX.rr(0, 0.5), index = index, age = 0, life = 1, a0 = 0, spin = 1, size = 0.2, armed = 0 }
+end
+
+function PFX.cometStart(c, fx, hurry)
+    c.life = PFX.rr(0.5, 0.95) * (hurry and 0.6 or 1)
+    c.age = 0
+    c.a0 = PFX.rr(0, math.pi * 2)
+    c.spin = PFX.rr(1.2, 2.4) * fx.spinDir * (PFX.rr(0, 1) < 0.15 and -1 or 1)
+    c.size = PFX.rr(0.14, 0.26)
+end
+
+function PFX.cometPlace(c, frameCF, u, rx, ry, grow)
+    local r = 1 - u ^ 1.6
+    local th = c.a0 + c.spin * (u + 0.5 * u * u)
+    local lp = Vector3.new(math.cos(th) * rx * 0.98 * r, math.sin(th) * ry * 0.98 * r, -0.12 - 0.5 * r)
+    local s = c.size * (1 - u * 0.55) * math.clamp(grow, 0.2, 1.2)
+    c.part.Size = Vector3.new(s, s, s)
+    c.part.CFrame = frameCF * CFrame.new(lp)
+end
+
+function PFX.makeTendril(frame, parent)
+    local a0 = Instance.new("Attachment")
+    a0.Parent = frame
+    local a1 = Instance.new("Attachment")
+    a1.Parent = frame
+    local beam = Instance.new("Beam")
+    beam.Attachment0 = a0
+    beam.Attachment1 = a1
+    beam.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, PORTAL_FX_CORE_COLOR),
+        ColorSequenceKeypoint.new(0.45, GLOW_COLOR),
+        ColorSequenceKeypoint.new(1, PORTAL_FX_DEEP_COLOR),
+    })
+    beam.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.05),
+        NumberSequenceKeypoint.new(0.7, 0.35),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    beam.LightEmission = 1
+    beam.LightInfluence = 0
+    beam.FaceCamera = true
+    beam.Segments = 14
+    beam.Width0 = 0.3
+    beam.Width1 = 0.02
+    beam.Enabled = false
+    beam.Parent = parent
+    return { beam = beam, a0 = a0, a1 = a1, state = "idle", wait = PFX.rr(0.1, 0.7), age = 0, life = 0.5, angle = 0, reach = 2, side = 1, phase = 0 }
+end
+
+-- Called from buildPortal the moment a portal exists. Builds everything that lives on it and fires the opening burst.
+function PFX.attach(p, frame, portalCF, decorative, onWall)
+    if not PORTAL_FX_ENABLED then
+        return
+    end
+    local q = PORTAL_FX_QUALITY
+    local holder = Instance.new("Folder")
+    holder.Name = "PFX"
+    holder.Parent = frame
+
+    local fx = {
+        born = os.clock(),
+        phase = PFX.rr(0, math.pi * 2),
+        spinDir = PFX.rr(0, 1) < 0.5 and -1 or 1,
+        flash = 1,
+        nextRipple = os.clock() + 0.5,
+        nodes = {},
+        comets = {},
+        tendrils = {},
+        gradients = {},
+        strokes = { glow = {}, mid = {}, core = {} },
+        guis = {},
+        mistCount = 0,
+        dead = false,
+        decorative = decorative,
+    }
+    p.fx = fx
+
+    -- rim nodes: little attachments that ride the ellipse and throw sparks and mist
+    local count = math.max(6, math.floor(PORTAL_FX_RIM_NODES))
+    for i = 1, count do
+        local att = Instance.new("Attachment")
+        att.Name = "RimNode"
+        att.Parent = frame
+        local node = { att = att, a = (i - 1) / count * math.pi * 2, jitter = PFX.rr(0.6, 1.4) }
+        node.spark = PFX.sparkEmitter(att)
+        if i % 2 == 0 then
+            node.mist = PFX.mistEmitter(att)
+            fx.mistCount = fx.mistCount + 1
+        end
+        fx.nodes[i] = node
+    end
+    fx.mistCount = math.max(fx.mistCount, 1)
+
+    -- soft halo behind the swirl
+    fx.center = Instance.new("Attachment")
+    fx.center.Name = "Center"
+    fx.center.CFrame = CFrame.new(0, 0, -0.3)
+    fx.center.Parent = frame
+    if PORTAL_FX_HALO then
+        fx.halo = PFX.haloEmitter(fx.center)
+    end
+
+    -- the comets spiralling in (the "inflow"), pooled so nothing is created while the portal runs
+    for i = 1, math.max(0, math.floor(PORTAL_FX_COMETS * q)) do
+        fx.comets[i] = PFX.makeComet(fx, holder, i)
+    end
+
+    -- plasma tendrils lashing off the rim
+    for i = 1, math.max(0, math.floor(PORTAL_FX_TENDRILS * math.max(q, 0.5))) do
+        fx.tendrils[i] = PFX.makeTendril(frame, holder)
+    end
+
+    -- the ring on the portal's face
+    for _, lbl in ipairs(p.labels or {}) do
+        local gui = lbl.Parent
+        if gui then
+            fx.guis[#fx.guis + 1] = gui
+            for _, kind in ipairs({ { "PFXRingGlow", "glow" }, { "PFXRingMid", "mid" }, { "PFXRingCore", "core" } }) do
+                local circle = gui:FindFirstChild(kind[1])
+                local stroke = circle and circle:FindFirstChild("Stroke")
+                if stroke then
+                    table.insert(fx.strokes[kind[2]], stroke)
+                    local sweep = stroke:FindFirstChild("Sweep")
+                    if sweep then
+                        table.insert(fx.gradients, sweep)
+                    end
+                end
+            end
+        end
+    end
+
+    -- ---------- opening burst ----------
+    local center = portalCF.Position
+    local front = portalCF * CFrame.new(0, 0, -0.3)
+    local faceSize = PORTAL_SIZE * (widthScale or 1)
+
+    -- flashes bloom across the face
+    PFX.flashDisc(front, 2, PORTAL_SIZE * 1.7, 0.6, 0.3, PORTAL_FX_CORE_COLOR, 0.05)
+    PFX.flashDisc(front, 3, PORTAL_SIZE * 2.3, 0.9, 0.5, GLOW_COLOR, 0.45)
+    PFX.lightPulse(center, GLOW_COLOR, 24, 6, 0.4)
+
+    -- shockwave rings leave the portal one after another
+    local rippleCF = portalCF * CFrame.new(0, 0, -0.14)
+    PFX.ripple(rippleCF, faceSize, PORTAL_SIZE, 0.3, 1.9, 0.45, PORTAL_FX_CORE_COLOR, 22, 2.6)
+    PFX.ripple(rippleCF, faceSize, PORTAL_SIZE, 0.3, 2.6, 0.6, GLOW_COLOR, 18, 2.2, false, 0.07)
+    PFX.ripple(rippleCF, faceSize, PORTAL_SIZE, 0.3, 3.5, 0.8, PORTAL_FX_ACCENT_COLOR, 12, 2, false, 0.15)
+
+    -- the sparks: a blast out of the face (and out the back unless it's stuck in a wall)
+    PFX.burstAt(front, PORTAL_FX_OPEN_SPARKS, onWall and 0 or math.floor(PORTAL_FX_OPEN_SPARKS * 0.4), 1, 62)
+
+    -- second wave: once the swirl has grown, the whole rim fires a fountain
+    task.delay(0.18, function()
+        if fx.dead then
+            return
+        end
+        for _, node in ipairs(fx.nodes) do
+            if node.spark and node.spark.Parent then
+                node.spark:Emit(math.max(1, math.floor(PORTAL_FX_OPEN_SPARKS / #fx.nodes * 1.4 * q)))
+            end
+        end
+    end)
+
+    if not decorative then
+        PFX.screen()
+    end
+end
+
+-- Runs every frame from the portal's Heartbeat (after the frame's size was set). Never lets an error escape.
+function PFX.step(p, now, t, w, h, dt)
+    local fx = p.fx
+    if not fx or fx.dead or not (p.frame and p.frame.Parent) then
+        return
+    end
+    local ok, err = pcall(PFX.stepInner, p, fx, now, t, dt)
+    if not ok then
+        fx.dead = true
+        warn("[RickPortal] portal fx switched off: " .. tostring(err))
+        PFX.silence(fx)
+    end
+end
+
+function PFX.silence(fx)
+    for _, node in ipairs(fx.nodes or {}) do
+        if node.spark then node.spark.Rate = 0 end
+        if node.mist then node.mist.Rate = 0 end
+    end
+    if fx.halo then fx.halo.Rate = 0 end
+    for _, c in ipairs(fx.comets or {}) do
+        c.trail.Enabled = false
+        c.part.Transparency = 1
+    end
+    for _, td in ipairs(fx.tendrils or {}) do
+        td.beam.Enabled = false
+    end
+end
+
+function PFX.stepInner(p, fx, now, t, dt)
+    local frame = p.frame
+    local q = PORTAL_FX_QUALITY
+    local size = frame.Size
+    local rx, ry = size.X * 0.5, size.Y * 0.5
+    local grow = math.clamp(math.min(rx, ry) / (PORTAL_SIZE * 0.5), 0, 1.3)
+    local age = now - fx.born
+    local closing = p.state == "closing"
+    local closeU = closing and math.clamp(t / CLOSE_TIME, 0, 1) or 0
+    local frameCF = frame.CFrame
+
+    fx.flash = math.max(0, fx.flash - dt * 2.4)
+    if closing and not fx.closeFlashed then
+        fx.closeFlashed = true
+        fx.flash = math.max(fx.flash, 0.6)
+    end
+
+    -- multiplier on rim sparks + inflow: big when the portal has just opened, then settles to 1
+    local boost = 1
+    if age < PORTAL_FX_OPEN_BOOST_TIME then
+        local u = 1 - age / PORTAL_FX_OPEN_BOOST_TIME
+        boost = 1 + (PORTAL_FX_OPEN_BOOST - 1) * u * u
+    end
+    local inflowMult = closing and PORTAL_FX_CLOSE_INFLOW_MULT or boost
+
+    -- ---------------- rim nodes: sparks + mist ----------------
+    local sparkRate = PORTAL_FX_RIM_SPARKS * q * boost * grow / #fx.nodes
+    local mistRate = PORTAL_FX_MIST * q * grow / fx.mistCount
+    if closing then
+        sparkRate = sparkRate * 0.6 * (1 - closeU)
+        mistRate = mistRate * (1 - closeU)
+    end
+    local swing = now * 0.55
+    for _, node in ipairs(fx.nodes) do
+        local ang = node.a + swing
+        local ca, sa = math.cos(ang), math.sin(ang)
+        local pos = Vector3.new(ca * rx * 0.97, sa * ry * 0.97, -0.12)
+        node.att.CFrame = PFX.aim(pos, pos + Vector3.new(ca, sa, -0.55))
+        node.spark.Rate = sparkRate * node.jitter
+        if node.mist then
+            node.mist.Rate = mistRate
+        end
+    end
+
+    -- ---------------- halo ----------------
+    if fx.halo then
+        local s = math.max(rx, ry) * 2.3
+        fx.halo.Size = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, s * 0.8),
+            NumberSequenceKeypoint.new(0.5, s * 1.1),
+            NumberSequenceKeypoint.new(1, s * 1.25),
+        })
+        fx.halo.Rate = 5 * q * grow * (closing and (1 - closeU) or 1) * (1 + fx.flash * 3)
+    end
+
+    -- ---------------- comets (inflow vortex) ----------------
+    local active = math.floor(PORTAL_FX_INFLOW * 0.72 * q * inflowMult * grow + 0.5)
+    local hurry = closing or boost > 1.6
+    for _, c in ipairs(fx.comets) do
+        if c.state == "dead" then
+            c.delay = c.delay - dt
+            if c.delay <= 0 and c.index <= active and grow > 0.08 then
+                PFX.cometStart(c, fx, hurry)
+                c.state = "arming"
+                c.armed = 0
+                c.trail.Enabled = false
+                c.part.Transparency = 1
+                PFX.cometPlace(c, frameCF, 0, rx, ry, grow)
+            end
+        elseif c.state == "arming" then
+            -- sit still for two frames, clear the ribbon, then start drawing (so a reused comet never streaks across the portal)
+            c.armed = c.armed + 1
+            if c.armed >= 2 then
+                c.state = "live"
+                c.trail:Clear()
+                c.trail.Enabled = true
+            end
+        else
+            c.age = c.age + dt
+            local u = c.age / c.life
+            if u >= 1 then
+                c.state = "dead"
+                c.trail.Enabled = false
+                c.part.Transparency = 1
+                c.delay = PFX.rr(0, 0.25) / math.max(inflowMult, 1)
+            else
+                PFX.cometPlace(c, frameCF, u, rx, ry, grow)
+                c.part.Transparency = math.clamp((u - 0.8) / 0.2, 0, 1)
+            end
+        end
+    end
+
+    -- ---------------- tendrils ----------------
+    local forward = Vector3.new(0, 0, -1)
+    for _, td in ipairs(fx.tendrils) do
+        if td.state == "idle" then
+            td.wait = td.wait - dt
+            if td.wait <= 0 and not closing and grow > 0.5 then
+                td.state = "live"
+                td.age = 0
+                td.life = PFX.rr(0.35, 0.7)
+                td.angle = PFX.rr(0, math.pi * 2)
+                td.reach = PFX.rr(1.5, 3.4) * grow
+                td.side = PFX.rr(0, 1) < 0.5 and -1 or 1
+                td.phase = PFX.rr(0, 6.28)
+                td.beam.Enabled = true
+            end
+        else
+            td.age = td.age + dt
+            local u = td.age / td.life
+            if u >= 1 or closing then
+                td.state = "idle"
+                td.beam.Enabled = false
+                td.wait = PFX.rr(0.04, 0.5) / q
+            else
+                local ca, sa = math.cos(td.angle), math.sin(td.angle)
+                local out = Vector3.new(ca, sa, 0)
+                local tang = Vector3.new(-sa, ca, 0)
+                local g = math.sin(math.pi * u) ^ 0.75
+                local rim = Vector3.new(ca * rx * 0.98, sa * ry * 0.98, -0.1)
+                local wob = math.sin(now * 9 + td.phase)
+                local tip = rim + out * (td.reach * g) + forward * (td.reach * 0.8 * g) + tang * (wob * td.reach * 0.35)
+                td.a0.CFrame = CFrame.fromMatrix(rim, tang, out)
+                td.a1.CFrame = CFrame.fromMatrix(tip, tang, out)
+                td.beam.CurveSize0 = td.side * td.reach * 0.55 * g
+                td.beam.CurveSize1 = -td.side * td.reach * 0.45 * g * math.cos(now * 7 + td.phase)
+                td.beam.Width0 = 0.34 * g * (1 + fx.flash)
+            end
+        end
+    end
+
+    -- ---------------- breathing ripples ----------------
+    if not closing and (p.state == "open" or t > 0.45) and now >= fx.nextRipple then
+        fx.nextRipple = now + PORTAL_FX_RIPPLE_EVERY
+        PFX.ripple(frameCF * CFrame.new(0, 0, -0.14), size.X, size.Y, 1.0, 1.55, 1.1, GLOW_COLOR, 14, 1.8)
+    end
+
+    -- ---------------- face ring ----------------
+    local pulse = 0.5 + 0.5 * math.sin(now * 7)
+    local pulse2 = 0.5 + 0.5 * math.sin(now * 4.3 + 1)
+    local sweepSpeed = 120 * (closing and 3 or 1) * (1 + boost * 0.4)
+    for _, g in ipairs(fx.gradients) do
+        g.Rotation = (now * sweepSpeed) % 360
+    end
+    for _, s in ipairs(fx.strokes.core) do
+        s.Thickness = 3.5 * (1 + 0.35 * pulse) + 5 * fx.flash
+    end
+    for _, s in ipairs(fx.strokes.mid) do
+        s.Thickness = 11 * (1 + 0.3 * pulse2) + 12 * fx.flash
+    end
+    for _, s in ipairs(fx.strokes.glow) do
+        s.Thickness = 26 * (1 + 0.25 * pulse) + 34 * fx.flash
+    end
+    local bright = 1 + 1.3 * fx.flash + 0.25 * pulse2 + (closing and 0.7 * closeU or 0)
+    for _, gui in ipairs(fx.guis) do
+        gui.Brightness = bright
+    end
+
+    -- ---------------- light ----------------
+    if p.light then
+        local shimmer = 0.5 + 0.5 * PFX.noise(now * 3 + fx.phase)
+        p.light.Color = GLOW_COLOR:Lerp(PORTAL_FX_ACCENT_COLOR, shimmer * 0.5)
+        p.light.Brightness = p.light.Brightness * (1 + 0.18 * PFX.noise(now * 11 + fx.phase) + 4 * fx.flash)
+    end
+end
+
+-- the portal has started collapsing: a ring implodes into it
+function PFX.onClose(p)
+    local fx = p.fx
+    if not fx or fx.dead or not (p.frame and p.frame.Parent) then
+        return
+    end
+    local size = p.frame.Size
+    PFX.ripple(p.frame.CFrame * CFrame.new(0, 0, -0.14), size.X, size.Y, 2.1, 0.3, CLOSE_TIME * 1.05, GLOW_COLOR, 20, 2.4, true)
+    PFX.ripple(p.frame.CFrame * CFrame.new(0, 0, -0.14), size.X, size.Y, 1.5, 0.25, CLOSE_TIME * 0.9, PORTAL_FX_CORE_COLOR, 12, 2.4, true, 0.04)
+end
+
+-- the portal is gone: if it was snapping shut, it goes out with a pop
+function PFX.onDestroy(p)
+    local fx = p.fx
+    if not fx or fx.dead or p.state ~= "closing" or not (p.frame and p.frame.Parent) then
+        return
+    end
+    local cf = p.frame.CFrame
+    PFX.burstAt(cf * CFrame.new(0, 0, -0.2), PORTAL_FX_CLOSE_SPARKS, PORTAL_FX_CLOSE_SPARKS, 0.75, 70)
+    PFX.flashBall(cf.Position, 1.2, 6.5, 0.24, PORTAL_FX_CORE_COLOR, 0.1)
+    PFX.lightPulse(cf.Position, GLOW_COLOR, 16, 3.5, 0.28)
+    PFX.ripple(cf * CFrame.new(0, 0, -0.14), 2, 2, 0.5, 4.5, 0.35, GLOW_COLOR, 14, 2.2)
+end
