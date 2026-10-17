@@ -1,0 +1,79 @@
+task.spawn(function()
+    local p = game.Players.LocalPlayer
+    local h = p:WaitForChild("PlayerGui"):WaitForChild("Bar"):WaitForChild("MagicHealth")
+    local label = h.TextLabel
+
+    label.Visible = true
+    label.Position = label.Position + UDim2.new(0, 0, -0.5, 0)
+
+    local health = h:FindFirstChild("Health")
+    if health then
+        if health:FindFirstChild("Bar") then
+            health.Bar.Image = "rbxassetid://15248647876"
+            health.Bar.ImageTransparency = 1
+            health.Bar.ImageColor3 = Color3.new(0, 0, 0)
+
+            if health.Bar:FindFirstChild("Bar") then
+                health.Bar.Bar.Image = "rbxassetid://15248647876"
+
+                if health.Bar.Bar:FindFirstChild("Bar") then
+                    health.Bar.Bar.Bar.Image = "rbxassetid://15248647876"
+                end
+            end
+        end
+
+        if health:FindFirstChild("Glow") then
+            health.Glow.Image = "rbxassetid://15247550681"
+            health.Glow.ImageTransparency = 0
+            health.Glow.ImageColor3 = Color3.new(0, 0, 0)
+        end
+    end
+
+    local b = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.FontWeight.Medium, Enum.FontStyle.Normal)
+
+Font { Family = rbxasset://fonts/families/GothamSSm.json, Weight = Medium, Style = Normal }
+
+    local s = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+
+    label.FontFace = b
+    h.Ult.FontFace = b
+    h.Ult.TextLabel.FontFace = b
+
+    local strokeMain = Instance.new("UIStroke")
+    strokeMain.LineJoinMode = Enum.LineJoinMode.Round
+    strokeMain.Color = Color3.new(0, 0, 0)
+    strokeMain.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    strokeMain.Thickness = 2
+    strokeMain.Parent = label
+
+    local hot = p.PlayerGui:WaitForChild("Hotbar"):WaitForChild("Backpack"):WaitForChild("Hotbar")
+    for _, v in pairs(hot:GetDescendants()) do
+        if v:IsA("TextButton") then
+            v.FontFace = b
+        end
+    end
+
+    local texts = {
+        "SAIYAN RAGE",
+        "LEGENDARY SUPER SAIYAN",
+        "SAIYAN INSTINCT",
+    }
+
+    local function typeText(text, duration)
+        label.Text = ""
+        local length = #text
+        local step = duration / math.max(length, 1)
+
+        for i = 1, length do
+            label.Text = text:sub(1, i)
+            task.wait(step)
+        end
+    end
+
+    while true do
+        for _, text in ipairs(texts) do
+            typeText(text, 1.45)
+            task.wait(38.55)
+        end
+    end
+end)
