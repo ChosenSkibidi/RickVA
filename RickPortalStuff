@@ -24,26 +24,24 @@ PORTAL_SIZE      = 9
 DISC_THICKNESS   = 0.2
 WALL_OFFSET      = 0.15
 WALL_MAX_NORMAL_Y = 0.5
-WALL_SNAP_DISTANCE = 5    -- orb keeps flying this far past its normal stop if a wall is there
-WALL_CUT_DEPTH     = 6    -- how far into the wall (studs) collision is switched off behind the portal
+WALL_SNAP_DISTANCE = 5
+WALL_CUT_DEPTH     = 6
 
-SHOT_TIME        = 0.30   -- flight time of the orb from the dot to the shoot point (the charge-up below happens before this)
+SHOT_TIME        = 0.30
 
--- Orb: charges inside the gun's dot, lets go from the dot's LIVE position, then flies a curve to the shoot point.
--- Total time from button press to portal opening = ORB_HOLD_TIME + SHOT_TIME.
-ORB_HOLD_TIME      = 0.10   -- seconds the orb charges inside the dot while the arm swings up
-ORB_START_SIZE     = 0.06   -- diameter when it first appears in the dot
-ORB_CHARGE_SIZE    = 0.40   -- diameter at the end of the charge (fits inside the dome glass)
-ORB_PEAK_SIZE      = 1.0    -- diameter it swells to right after leaving the dot
-ORB_END_SIZE       = 0.5    -- diameter when it reaches the shoot point
-ORB_SWELL_FRAC     = 0.25   -- fraction of the flight spent swelling from ORB_CHARGE_SIZE to ORB_PEAK_SIZE
-ORB_EXIT_UP        = 0.8    -- how hard it pops upward out of the dome before bending to the target (0 = straight line)
-ORB_P1_REACH       = 0.40   -- first curve handle (fraction of the distance): bigger = wider arc out of the dot
-ORB_P2_REACH       = 0.30   -- second curve handle (fraction of the distance): bigger = longer straight run-in
-ORB_START_SPEED    = 0.50   -- speed the instant it leaves the dot, as a fraction of cruising speed
-ORB_EASE_IN_FRAC   = 0.20   -- fraction of the flight spent speeding up to cruising speed
-ORB_FOLLOW_FRAC    = 0.35   -- fraction of the flight over which it lets go of the (still moving) dot
-ORB_TRAIL_LIFETIME = 0.20   -- seconds the glowing trail takes to fade
+ORB_HOLD_TIME      = 0.10
+ORB_START_SIZE     = 0.06
+ORB_CHARGE_SIZE    = 0.40
+ORB_PEAK_SIZE      = 1.0
+ORB_END_SIZE       = 0.5
+ORB_SWELL_FRAC     = 0.25
+ORB_EXIT_UP        = 0.8
+ORB_P1_REACH       = 0.40
+ORB_P2_REACH       = 0.30
+ORB_START_SPEED    = 0.50
+ORB_EASE_IN_FRAC   = 0.20
+ORB_FOLLOW_FRAC    = 0.35
+ORB_TRAIL_LIFETIME = 0.20
 
 OPEN_TIME        = 1.0
 DAMPING          = 8
@@ -57,16 +55,15 @@ SPIN_SPEED       = 35
 CLOSE_TIME       = 0.4
 PORTAL_LIFETIME  = 25
 
-TRIGGER_SIZE     = Vector3.new(12 * PORTAL_WIDTH_MULT, 9, 3) -- width follows the portal stretch
+TRIGGER_SIZE     = Vector3.new(12 * PORTAL_WIDTH_MULT, 9, 3)
 ARM_DELAY        = 0.3
-ENTER_DEPTH      = 0.5   -- studs you have to walk PAST the portal plane before it teleports you
-                                       -- (ignored for portals stuck to a wall: those fire on touch)
+ENTER_DEPTH      = 0.5
 ARRIVE_DISTANCE  = 15
 RETURN_PORTAL_OFFSET = 5
 EXIT_PORTAL_FRONT_DISTANCE = 7
-EXIT_PORTAL_BEHIND_DISTANCE = 2   -- regular portals: you appear this far behind the exit portal and walk out through it
-EXIT_WALK_DISTANCE = 6            -- how far the auto-walk carries you after a regular portal
-EXIT_WALK_LOCK_FACING = true      -- true: the walk out keeps you facing/walking the portal's direction (stops shiftlock/camera turning you); false: old behaviour, you steer by where you face
+EXIT_PORTAL_BEHIND_DISTANCE = 2
+EXIT_WALK_DISTANCE = 6
+EXIT_WALK_LOCK_FACING = true
 EXIT_ANIMATION_ID = "rbxassetid://106876290279410"
 SHOOT_ANIMATION_ID = "rbxassetid://17275150809"
 PORTAL_FOV_SNAP = 95
@@ -101,62 +98,52 @@ BLOOM_INTENSITY  = 0.8
 BLOOM_SIZE       = 30
 BLOOM_THRESHOLD  = 0.9
 
--- Portal VFX: every portal gets these (the one you shoot AND the exit portals)
 PORTAL_FX_ENABLED           = true
-PORTAL_FX_CORE_COLOR        = Color3.fromRGB(225, 255, 215)  -- hot white-green core of flashes and spark tips
-PORTAL_FX_RIM_SPARKS        = 34    -- sparks per second thrown off the rim while open
-PORTAL_FX_INFLOW            = 22    -- particles per second streaming into the portal
-PORTAL_FX_MIST              = 12    -- soft green vapour puffs per second drifting off the rim
-PORTAL_FX_RIPPLE_EVERY      = 0.9   -- seconds between the soft rings that breathe out of an open portal
-PORTAL_FX_OPEN_SPARKS       = 70    -- sparks in the opening burst
-PORTAL_FX_OPEN_BOOST        = 5     -- multiplier on rim sparks + inflow while the portal is opening
-PORTAL_FX_OPEN_BOOST_TIME   = 0.4   -- seconds that boost lasts
-PORTAL_FX_CLOSE_INFLOW_MULT = 4     -- inflow multiplier while the portal collapses
-PORTAL_FX_CLOSE_SPARKS      = 26    -- sparks in the snap-shut pop (per side)
-PORTAL_FX_DEEP_COLOR        = Color3.fromRGB(35, 190, 70)    -- deep green of the mist, glowing rim and spark tails
-PORTAL_FX_LIME_COLOR        = Color3.fromRGB(175, 255, 120)  -- lime mid-tone of sparks, rays and arcs
-PORTAL_FX_ARCS              = 2.4   -- lightning arcs per second crackling off the rim while open
-PORTAL_FX_ARC_LENGTH        = 3.2   -- studs an arc reaches out into the air
-PORTAL_FX_RIM_GLOW          = false -- soft pulsing glow ring hugging the portal edge
-PORTAL_FX_BLOOM_PULSE       = 2.0   -- bloom flash multiplier when a portal opens (1 = off)
-ORB_FX_SATELLITES           = true  -- two glowing motes corkscrewing around the orb in flight
-ORB_FX_SPARKS               = 150   -- sparks per second the orb sheds in flight
+PORTAL_FX_CORE_COLOR        = Color3.fromRGB(225, 255, 215)
+PORTAL_FX_RIM_SPARKS        = 34
+PORTAL_FX_INFLOW            = 22
+PORTAL_FX_MIST              = 12
+PORTAL_FX_RIPPLE_EVERY      = 0.9
+PORTAL_FX_OPEN_SPARKS       = 70
+PORTAL_FX_OPEN_BOOST        = 5
+PORTAL_FX_OPEN_BOOST_TIME   = 0.4
+PORTAL_FX_CLOSE_INFLOW_MULT = 4
+PORTAL_FX_CLOSE_SPARKS      = 26
+PORTAL_FX_DEEP_COLOR        = Color3.fromRGB(35, 190, 70)
+PORTAL_FX_LIME_COLOR        = Color3.fromRGB(175, 255, 120)
+PORTAL_FX_ARCS              = 2.4
+PORTAL_FX_ARC_LENGTH        = 3.2
+PORTAL_FX_RIM_GLOW          = false
+PORTAL_FX_BLOOM_PULSE       = 2.0
+ORB_FX_SATELLITES           = true
+ORB_FX_SPARKS               = 150
 
--- Areas: teleport spots (HumanoidRootPart CFrames).
 AREAS = {
     { name = "Arena",              cframe = CFrame.new(65.85848999023438, 440.75439453125, 62.807456970214844) },
     { name = "Mountain Peak",      cframe = CFrame.new(303.1275329589844, 671.103271484375, 391.58837890625) },
     { name = "Garage",             cframe = CFrame.new(23.781126022338867, -2.97709059715271, 19.27924919128418), voidSafe = true },
 }
 
--- Void rescue: if you ever drop below VOID_Y you get teleported to the player you were just near
--- (within VOID_NEAR_RADIUS studs, seen in the last VOID_MEMORY seconds), or to VOID_FALLBACK_AREA
--- (a name in AREAS) if you weren't near anyone or that player isn't a valid target any more.
+SERVER_JOIN_ENABLED = true
+
 VOID_Y             = 325.3045349121094
 VOID_FALLBACK_AREA = "Mountain Peak"
-VOID_NEAR_RADIUS   = 80     -- studs
-VOID_MEMORY        = 10     -- seconds
-VOID_BEHIND_DISTANCE = 6    -- studs behind that player that you come out
-VOID_COOLDOWN      = 2      -- seconds between rescues
-VOID_SAFE_RADIUS   = 150    -- studs: no rescue near an area marked voidSafe = true (the Garage sits below VOID_Y)
+VOID_NEAR_RADIUS   = 80
+VOID_MEMORY        = 10
+VOID_BEHIND_DISTANCE = 6
+VOID_COOLDOWN      = 2
+VOID_SAFE_RADIUS   = 150
 
--- Death flow: you explode where you die and your corpse stays there. You respawn hidden on top of the corpse, and
--- after the 0.4s respawn delay the corpse regenerates into you, right where you died.
 DEATH_TP_ENABLED         = true
-DEATH_TP_DELAY           = 0.5   -- extra seconds you wait after respawning before you get sent back to where you died
-MORPH_DELAY              = 0.6   -- everything that used to run the instant you respawn now waits this long (same moment as the morph)
+DEATH_TP_DELAY           = 0.5
+MORPH_DELAY              = 0.6
 
--- Failsafe: if your health drops to FAILSAFE_HEALTH or lower, a CoreGui "Retreat?"
--- notification pops up. Press Yes and a portal opens under your feet and sends you
--- to FAILSAFE_AREA (must match a name in AREAS).
 FAILSAFE_ENABLED      = true
-FAILSAFE_HEALTH       = 25     -- absolute HP
+FAILSAFE_HEALTH       = 25
 FAILSAFE_AREA         = "Mountain Peak"
-FAILSAFE_DELAY        = 0.3    -- seconds the floor portal opens before the floor drops out
-FAILSAFE_FALL_DEPTH   = 3      -- studs below the portal plane before you get teleported
-FAILSAFE_FALL_TIMEOUT = 3      -- safety: teleport anyway if the fall takes this long
--- Auto-dodge: when someone plays one of the DODGE_ANIMATION_IDS close to you and they're facing you (or you're
--- right in front of them), you teleport behind them with a particle burst + a quick blink (no portal).
+FAILSAFE_DELAY        = 0.3
+FAILSAFE_FALL_DEPTH   = 3
+FAILSAFE_FALL_TIMEOUT = 3
 DODGE_ENABLED         = true
 DODGE_ANIMATION_IDS = {
     "10468665991",
@@ -186,55 +173,51 @@ CONDITIONED_DODGE_ANIMATION_IDS = {
 CONDITIONED_DODGE_RANGE = 8
 DODGE_CAMERA_LOCK_TIME  = 0.4
 DODGE_DISABLE_ANIMATION_ID = "10470389827"
-DODGE_RANGE           = 35     -- studs
-DODGE_POINT_BLANK     = 5      -- studs: closer than this, facing doesn't matter
-DODGE_FACING_NEAR     = 0.1    -- how much they must face you at point-blank range (dot: "kind of facing")
-DODGE_FACING_FAR      = 0.85   -- how much they must face you at max range (dot: "properly facing")
-DODGE_BEHIND_DISTANCE = 8      -- studs behind them that you land
-BEHIND_BUTTON_DISTANCE = 6     -- studs behind the nearest enemy that the blue mini button lands you
-BEHIND_BUTTON_COOLDOWN = 5     -- seconds between presses of the blue mini button
-BEHIND_CLICK_METHOD    = "keypress"  -- how the blue button left-clicks: "keypress" (keypress(0x01) = VK_LBUTTON) or "vim" (VirtualInputManager)
-BEHIND_BUTTON_COLOR    = Color3.fromRGB(70, 150, 255)  -- blue (the retreat mini button is green)
+DODGE_RANGE           = 35
+DODGE_POINT_BLANK     = 5
+DODGE_FACING_NEAR     = 0.1
+DODGE_FACING_FAR      = 0.85
+DODGE_BEHIND_DISTANCE = 8
+BEHIND_BUTTON_DISTANCE = 6
+BEHIND_BUTTON_COOLDOWN = 5
+BEHIND_CLICK_METHOD    = "keypress"
+BEHIND_BUTTON_COLOR    = Color3.fromRGB(70, 150, 255)
 
--- Blue button blink FX (visuals only: the sound is still just EXIT_SOUND). The auto-dodge keeps its old effect.
 BEHIND_FX_ENABLED      = true
-BEHIND_FX_COLOR        = Color3.fromRGB(70, 150, 255)   -- main glow of every effect
-BEHIND_FX_CORE_COLOR   = Color3.fromRGB(215, 240, 255)  -- hot white-blue core of the flashes and the dash line
-BEHIND_FX_GHOSTS       = {                              -- hologram copies of your body left along the dash path
-    { at = 0,   transparency = 0.30 },                  -- at = how far along the path (0 = where you were, 1 = where you land)
+BEHIND_FX_COLOR        = Color3.fromRGB(70, 150, 255)
+BEHIND_FX_CORE_COLOR   = Color3.fromRGB(215, 240, 255)
+BEHIND_FX_GHOSTS       = {
+    { at = 0,   transparency = 0.30 },
     { at = 0.3, transparency = 0.70 },
     { at = 0.6, transparency = 0.55 },
 }
-BEHIND_FX_GHOST_FADE   = 0.45   -- seconds the hologram copies take to fade out
-BEHIND_FX_STREAK_TIME  = 0.28   -- seconds the dash line takes to thin out
-BEHIND_FX_RING_SIZE    = 16     -- studs across the ground rings at full size
-BEHIND_FX_FOV_PUNCH    = 86     -- camera FOV the instant you land (eases back to PORTAL_FOV_REST)
-BEHIND_FX_BLUR         = 10     -- blur size the instant you land (0 = off)
-BEHIND_FX_SCREEN_FLASH = 0.22   -- brightness of the blue screen flash when you land (0 = off)
+BEHIND_FX_GHOST_FADE   = 0.45
+BEHIND_FX_STREAK_TIME  = 0.28
+BEHIND_FX_RING_SIZE    = 16
+BEHIND_FX_FOV_PUNCH    = 86
+BEHIND_FX_BLUR         = 10
+BEHIND_FX_SCREEN_FLASH = 0.22
 DODGE_COOLDOWN        = 2
-DODGE_GLOW_COLOR      = Color3.fromRGB(45, 105, 195)  -- hologram blue (not cyan)
-DODGE_FLASH_TIME      = 0.8    -- seconds the blue highlight takes to fade out
--- EXIT_SOUND plays whenever an exit portal opens (and is the second dodge sound too)
-EXIT_PORTAL_SOUND_VOLUME = 2   -- volume it plays at on exit portals (the dodge uses EXIT_SOUND.volume)
+DODGE_GLOW_COLOR      = Color3.fromRGB(45, 105, 195)
+DODGE_FLASH_TIME      = 0.8
+EXIT_PORTAL_SOUND_VOLUME = 2
 EXIT_SOUND = { file = "RickPortal_dodge2.mp3", volume = 1.25, url = "https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/copy_0D01007D-7C5C-41A7-B04D-8465A78F756E.mp3" }
--- the voiceline only plays now and then (DODGE_VOICE_CHANCE) and never on a re-teleport
 DODGE_VOICE = { file = "RickPortal_dodge.mp3", volume = 1, url = "https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/copy_57E46665-0AE3-4D96-BA4D-D3827774D4AD.mp3" }
-DODGE_VOICE_CHANCE    = 0.12   -- chance (0-1) the voiceline plays on a dodge
+DODGE_VOICE_CHANCE    = 0.12
 DODGE_STREAK_VOICE = { file = "RickPortal_dodge3.mp3", volume = 1, url = "https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/copy_4687F760-9844-4D6F-B5CB-4336969E803B.mp3" }
-DODGE_STREAK_COUNT   = 6    -- dodges in a row against the same player before the streak voiceline plays
--- every sound here is downloaded at startup
+DODGE_STREAK_COUNT   = 6
 DODGE_SOUNDS = { DODGE_VOICE, EXIT_SOUND, DODGE_STREAK_VOICE }
 
-RETREAT_ANIMATION_ID = "rbxassetid://15684011459"  -- plays when you press the mini button
-RETREAT_START_DELAY = 0.1   -- seconds between the animation starting and the portal opening
-MANUAL_RETREAT_COOLDOWN = 20  -- seconds between presses of the mini retreat button
-FAILSAFE_SINK_DEPTH   = 4      -- studs under the exit portal you appear (sunk into the ground)
-FAILSAFE_SINK_HOLD    = 0      -- seconds you stay frozen under the floor before the throw (0 = none)
-FAILSAFE_LAUNCH_UP    = 82     -- upward speed when you shoot out of the exit portal
-FAILSAFE_LAUNCH_FWD   = 58     -- forward speed when you shoot out of the exit portal
+RETREAT_ANIMATION_ID = "rbxassetid://15684011459"
+RETREAT_START_DELAY = 0.1
+MANUAL_RETREAT_COOLDOWN = 20
+FAILSAFE_SINK_DEPTH   = 4
+FAILSAFE_SINK_HOLD    = 0
+FAILSAFE_LAUNCH_UP    = 82
+FAILSAFE_LAUNCH_FWD   = 58
 FAILSAFE_COOLDOWN     = 5
-FAILSAFE_PROMPT_TIME  = 10     -- seconds the Retreat? popup stays on screen
-FAILSAFE_MIN_DISTANCE = 60     -- don't trigger if you're already this close to the area
+FAILSAFE_PROMPT_TIME  = 10
+FAILSAFE_MIN_DISTANCE = 60
 
 teleportToArea = nil
 portals = {}
@@ -389,8 +372,6 @@ shootTrack = nil
 PORTAL_FLASH_TIME = 0.8
 activeFlash = nil
 
--- Highlight (portal light green) over the whole character that fades out smoothly. One tween drives both
--- the fill and the outline, so they fade together.
 function flashHighlight(character, highlight, tween)
     if not character then return end
 
@@ -424,8 +405,6 @@ function flashHighlight(character, highlight, tween)
     tween:Play()
 end
 
--- Pushes you forward at your WalkSpeed for the first `distance` studs after a regular portal,
--- even if you let go of the controls, so the walk out of the exit portal always looks smooth.
 walkLock = { id = 0, autoRotate = nil }
 
 function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTime, dir, conn)
@@ -434,8 +413,6 @@ function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTim
         return hum and hum.WalkSpeed or 16
     end
 
-    -- shiftlock turns you to the camera, so while the walk lasts AutoRotate is off and your root is held
-    -- pointing along `look` every frame (AutoRotate goes back to what it was when the walk ends)
     local lockFacing = EXIT_WALK_LOCK_FACING and hum ~= nil
     local walkId = 0
     local myHum = hum
@@ -470,7 +447,7 @@ function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTim
 
     bv = Instance.new("BodyVelocity")
     bv.Name = "RickPortalWalk"
-    bv.MaxForce = Vector3.new(math.huge, 0, math.huge) -- sideways only, gravity still works
+    bv.MaxForce = Vector3.new(math.huge, 0, math.huge)
     bv.P = 10000
     bv.Velocity = look * currentSpeed()
     bv.Parent = root
@@ -490,9 +467,6 @@ function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTim
             return
         end
 
-        -- after the first EXIT_PORTAL_BEHIND_DISTANCE studs (you've passed the exit portal),
-        -- steer by where you're facing now. Y is thrown away so it can never push you up or down.
-        -- (skipped when the facing is locked: you keep going the way the portal sends you)
         if not lockFacing and walked >= EXIT_PORTAL_BEHIND_DISTANCE then
             live = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
             if live.Magnitude > 0.01 then
@@ -500,12 +474,10 @@ function walkOut(root, look, distance, hum, currentSpeed, bv, startPos, startTim
             end
         end
 
-        bv.Velocity = dir * speed -- always grabs the current WalkSpeed
+        bv.Velocity = dir * speed
     end)
 end
 
--- regular = true (normal portals): no exit animation, and you keep walking forward at your
--- walk speed so you stroll out through the exit portal.
 function teleportOut(root, landPos, faceAt, regular, noAnimation, flat, look, hum)
     flat = Vector3.new(faceAt.X - landPos.X, 0, faceAt.Z - landPos.Z)
     look = flat.Magnitude > 0.01 and flat.Unit or Vector3.new(0, 0, -1)
@@ -528,7 +500,6 @@ function teleportOut(root, landPos, faceAt, regular, noAnimation, flat, look, hu
         playCharacterAnimation(root.Parent, EXIT_ANIMATION_ID)
     end
 
-    -- white flash over the whole character, fading out
     flashHighlight(root.Parent)
 end
 
@@ -583,7 +554,6 @@ function closePortal(p)
     end
 end
 
--- the glowing dot in the middle of the gun's dome (the swirl eye) on the gun that's in your hand right now
 function getGunDotPart()
     if gunHolder and gunHolder.Parent then
         return gunHolder:FindFirstChild("SwirlEye", true) or gunHolder:FindFirstChild("DomeCore", true)
@@ -596,7 +566,6 @@ function orbBezier(p0, p1, p2, p3, t)
     return p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t)
 end
 
--- one-shot glowing ball that swells and fades out (the "pop" when the orb lets go of the dot)
 function orbPop(pos, fromSize, toSize, life, color)
     local pop = Instance.new("Part")
     pop.Shape = Enum.PartType.Ball
@@ -622,16 +591,9 @@ function orbPop(pos, fromSize, toSize, life, color)
     tween:Play()
 end
 
--- ====================================================================================================
--- PORTAL GUN VFX (all of it lives in this file)
---   gun launch -> orb flight (halo, comet tail, corkscrew motes, shed sparks) -> impact at the shoot point
---   -> portal opening (flash, shockwave rings, rays, lightning, spark burst) -> idle (rim sparks, inflow,
---   mist, breathing ripples, crackling arcs, glowing rim, flickering light) -> collapse + snap-shut pop
--- Every call site wraps these in pcall, so a vfx error can never stop a portal from opening.
--- ====================================================================================================
 PFX_TEX_SPARK = "rbxasset://textures/particles/sparkles_main.dds"
 PFX_TEX_SMOKE = "rbxasset://textures/particles/smoke_main.dds"
-PFX_RING_FILL = 0.8   -- the ring circle covers this fraction of its part (leaves room for the stroke)
+PFX_RING_FILL = 0.8
 pfxRoot = nil
 pfxWarned = false
 pfxBloomTween = nil
@@ -670,7 +632,6 @@ function pfxRand(a, b)
     return a + (b - a) * math.random()
 end
 
--- CFrame at pos looking along dir (safe for straight up / down / zero)
 function pfxLook(pos, dir)
     if dir.Magnitude < 1e-3 then
         dir = Vector3.yAxis
@@ -743,7 +704,6 @@ function pfxEmitter(parent, o)
     return e
 end
 
--- hollow glowing circle on a flat invisible part (soft outer stroke + crisp core stroke, both faces)
 function pfxRingBuild(cf, size, color, thick, bright)
     local ring = pfxPart(Enum.PartType.Block, Vector3.new(size, size, 0.05), color, 1, cf)
     local strokes = {}
@@ -785,8 +745,6 @@ function pfxRingBuild(cf, size, color, thick, bright)
     return ring, strokes
 end
 
--- expanding shockwave ring. s0/s1 = visible circle diameter. move = optional slide along the ring's
--- own Z while it expands (negative = toward the front of the portal / along the shot)
 function pfxRing(cf, s0, s1, time, color, thick, move, bright)
     local k = 1 / PFX_RING_FILL
     local ring, strokes = pfxRingBuild(cf, s0 * k, color, thick or 14, bright)
@@ -802,7 +760,6 @@ function pfxRing(cf, s0, s1, time, color, thick, move, bright)
     return ring
 end
 
--- glowing ball that swells and fades, with a light that fades with it
 function pfxFlash(pos, s0, s1, time, color, range, bright)
     local ball = pfxPart(Enum.PartType.Ball, Vector3.new(s0, s0, s0), color or PORTAL_FX_CORE_COLOR, 0.05, CFrame.new(pos), time + 0.2)
     local light = Instance.new("PointLight")
@@ -815,7 +772,6 @@ function pfxFlash(pos, s0, s1, time, color, range, bright)
     pfxTween(ball, time, { Size = Vector3.new(s1, s1, s1), Transparency = 1 })
 end
 
--- one-shot cone of sparks along cf's front (-Z)
 function pfxSparks(cf, count, spreadDeg, speedMin, speedMax, size, gravity)
     local anchor = pfxPart(Enum.PartType.Block, Vector3.new(0.2, 0.2, 0.2), GLOW_COLOR, 1, cf, 2)
     local emitter = pfxEmitter(anchor, {
@@ -829,7 +785,6 @@ function pfxSparks(cf, count, spreadDeg, speedMin, speedMax, size, gravity)
     emitter:Emit(count)
 end
 
--- thin bars that shoot out of a ring edge in the plane of cf (cracks in the air)
 function pfxRays(cf, count, r0, lenMin, lenMax, time)
     for i = 1, count do
         local ang = (i + math.random() * 0.8) / count * math.pi * 2
@@ -853,7 +808,6 @@ function pfxRays(cf, count, r0, lenMin, lenMax, time)
     end
 end
 
--- jagged lightning bolt from a to b (glow + white core per segment)
 function pfxArc(a, b, segs, jit, life, thick)
     local dir = b - a
     local len = dir.Magnitude
@@ -894,9 +848,6 @@ function pfxBloomPulse(mult, time)
     pfxBloomTween = pfxTween(bloom, time, { Intensity = BLOOM_INTENSITY }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 end
 
------------------------------------------------------------------------------------------------ orb
--- Everything the orb carries: a soft halo, a fat comet tail, two motes corkscrewing around it, sparks it
--- sheds, and (while it charges inside the gun's dot) a ring that collapses into the dot.
 function pfxOrbCreate(startPos)
     local o = {
         born = os.clock(), lastT = os.clock(), last = startPos, pos = startPos,
@@ -983,7 +934,6 @@ function pfxOrbStep(o, pos, d)
     o.haloA1.Position = Vector3.new(0, -hs * 0.5, 0)
 
     if not o.flying then
-        -- charging: a ring collapses into the dot
         local ring = o.chargeRing
         if ring then
             local h = math.clamp((d - ORB_START_SIZE) / math.max(ORB_CHARGE_SIZE - ORB_START_SIZE, 0.01), 0, 1)
@@ -995,7 +945,6 @@ function pfxOrbStep(o, pos, d)
         return
     end
 
-    -- two motes corkscrew around the flight line
     local fwd = o.dir
     local side = fwd:Cross(Vector3.yAxis)
     if side.Magnitude < 0.05 then
@@ -1014,7 +963,6 @@ function pfxOrbStep(o, pos, d)
         s.a1.Position = Vector3.new(0, -sd * 0.5, 0)
     end
 
-    -- shed sparks
     o.acc = o.acc + dt * ORB_FX_SPARKS
     local n = math.floor(o.acc)
     if n > 0 then
@@ -1023,7 +971,6 @@ function pfxOrbStep(o, pos, d)
     end
 end
 
--- the orb lets go of the dot: flash, two shockwave rings along the shot, spark cone, idle sparkle on the dome
 function pfxLaunch(o, p0, aim)
     o.flying = true
     if o.chargeRing then
@@ -1057,7 +1004,6 @@ function pfxLaunch(o, p0, aim)
     end
 end
 
--- the orb arrives: hot flash, shockwave, sparks thrown back at the shooter, cracks in the air
 function pfxImpact(pos, dir)
     local cf = pfxLook(pos, dir)
     pfxFlash(pos, 0.8, 5.5, 0.28, PORTAL_FX_CORE_COLOR, 24, 7)
@@ -1086,8 +1032,6 @@ function pfxOrbFinish(o)
     end
 end
 
-------------------------------------------------------------------------------------------- portal
--- puts an attachment at lpos (portal-local), aims it along ldir and emits n particles from it
 function pfxEmitFrom(att, emitter, lpos, ldir, n)
     att.CFrame = pfxLook(lpos, ldir)
     emitter:Emit(n or 1)
@@ -1100,7 +1044,6 @@ function pfxTake(fx, key, perSecond, dt, cap)
     return math.min(n, cap)
 end
 
--- spark thrown off the rim (out and a little toward whichever face it picked)
 function pfxRimSpark(fx, rx, ry, burst)
     local a = math.random() * math.pi * 2
     local c, s = math.cos(a), math.sin(a)
@@ -1114,7 +1057,6 @@ function pfxRimSpark(fx, rx, ry, burst)
     end
 end
 
--- streak that starts out in front of / behind the portal and gets pulled in, with a slight spiral
 function pfxInflow(fx, rBase)
     local a = math.random() * math.pi * 2
     local c, s = math.cos(a), math.sin(a)
@@ -1133,7 +1075,6 @@ function pfxMist(fx, rx, ry)
     pfxEmitFrom(fx.mistAtt, fx.mistEm, Vector3.new(c * rx * 0.95, s * ry * 0.95, 0), Vector3.new(c, s, zs), 1)
 end
 
--- lightning off the rim: either out into the air, or across the face of the portal
 function pfxPortalArc(frame, rx, ry, chord)
     local cf = frame.CFrame
     local a = math.random() * math.pi * 2
@@ -1227,7 +1168,6 @@ function pfxPortalCreate(p, frame)
     pfxPortalBurst(p, frame)
 end
 
--- the opening: flash, three staggered shockwaves, rays, lightning, a big spark burst, a puff of mist
 function pfxPortalBurst(p, frame)
     local fx = p.fx
     local cf = frame.CFrame
@@ -1256,7 +1196,6 @@ function pfxPortalBurst(p, frame)
     pfxBloomPulse(PORTAL_FX_BLOOM_PULSE, 0.7)
 end
 
--- runs every Heartbeat on the portal
 function pfxPortalUpdate(p, frame)
     local fx = p.fx
     if not fx or not frame.Parent then return end
@@ -1274,7 +1213,6 @@ function pfxPortalUpdate(p, frame)
     local rBase = PORTAL_SIZE * 0.5
     local swallow = math.clamp(1 - (now - fx.swallow) / 0.45, 0, 1)
 
-    -- glowing rim + flickering light (cheap, runs even when far away)
     local flick = 0.5 + 0.5 * math.noise(now * 7, fx.seed)
     if fx.glow then
         fx.glow.Size = Vector3.new(fw / PFX_RING_FILL, fh / PFX_RING_FILL, 0.05)
@@ -1317,7 +1255,6 @@ function pfxPortalUpdate(p, frame)
     end
 end
 
--- the last frame of the collapse: the portal snaps shut with a pop on both sides
 function pfxPortalSnap(p, frame)
     if not p.fx then return end
     local cf = frame.CFrame
@@ -1331,7 +1268,6 @@ function pfxPortalSnap(p, frame)
     end
 end
 
--- someone walks through: the portal flares
 function pfxPortalSwallow(p)
     local fx = p.fx
     local frame = p.frame
@@ -1347,11 +1283,6 @@ function pfxPortalSwallow(p)
     pfxBloomPulse(1.6, 0.45)
 end
 
--- The orb is born INSIDE the gun's dot and charges there (glued to the dot's live position, so it rides
--- the arm as it swings up). Then it lets go from wherever the dot is RIGHT NOW with a pop, leaves up out
--- of the dome, and flies one smooth curve that lands exactly on toPos. Speed is mapped by distance along
--- the curve (never wobbles), it eases up to full speed over the first part and then holds it, and a
--- glowing trail draws the curve behind it.
 function shootOrb(fromPos, toPos, travelTime)
     local dotPart = getGunDotPart()
     local lastDot = dotPart and dotPart.Position or fromPos
@@ -1379,7 +1310,6 @@ function shootOrb(fromPos, toPos, travelTime)
         return ball
     end
 
-    -- green shell + hot white core, a light that follows it, and a trail
     local shell = makeBall(GLOW_COLOR, 0.1)
     local core = makeBall(Color3.fromRGB(235, 255, 225), 0)
 
@@ -1436,8 +1366,6 @@ function shootOrb(fromPos, toPos, travelTime)
         if orbFx then pfxCall(pfxOrbStep, orbFx, pos, d) end
     end
 
-    -- progress along the curve (0..1) for flight time x (0..1): starts at ORB_START_SPEED of cruising
-    -- speed, eases up to full speed over ORB_EASE_IN_FRAC, then holds it. Normalised so progress(1) = 1.
     local ease = ORB_EASE_IN_FRAC
     local v0 = ORB_START_SPEED
     local norm = 1 - ease * 0.5 * (1 - v0)
@@ -1453,7 +1381,6 @@ function shootOrb(fromPos, toPos, travelTime)
     end
 
     local ok, err = pcall(function()
-        -- 1) charge inside the dot, riding it while the arm swings up
         local holdStart = os.clock()
         while true do
             local raw = (os.clock() - holdStart) / ORB_HOLD_TIME
@@ -1464,19 +1391,16 @@ function shootOrb(fromPos, toPos, travelTime)
             RunService.RenderStepped:Wait()
         end
 
-        -- 2) let go from where the dot is right now
         local p0 = dotPos()
         local p3 = toPos
         local toTarget = p3 - p0
         local dist = toTarget.Magnitude
         local aim = dist > 0.01 and toTarget.Unit or Vector3.zAxis
 
-        -- leaves up out of the dome, pulled toward the target so the curve can never swing backwards
         local exitDir = (aim + Vector3.yAxis * ORB_EXIT_UP).Unit
         local p1 = p0 + exitDir * (dist * ORB_P1_REACH)
         local p2 = p3 - aim * (dist * ORB_P2_REACH)
 
-        -- arc-length table so the orb moves at a steady, controllable speed along the curve
         local steps = 32
         local lens = { 0 }
         local prev = p0
@@ -1503,20 +1427,17 @@ function shootOrb(fromPos, toPos, travelTime)
         if orbFx then pfxCall(pfxLaunch, orbFx, p0, aim) end
         trail.Enabled = true
 
-        -- 3) fly the curve
         local flightStart = os.clock()
         while true do
             local x = math.clamp((os.clock() - flightStart) / travelTime, 0, 1)
             local pos = orbBezier(p0, p1, p2, p3, curveParam(progress(x)))
 
-            -- keep riding the dot's motion for a moment, then let go of it smoothly
             local follow = math.clamp(x / ORB_FOLLOW_FRAC, 0, 1)
             follow = 1 - follow * follow * (3 - 2 * follow)
             if follow > 0 then
                 pos = pos + (dotPos() - p0) * follow
             end
 
-            -- swells out of the dot, then tightens toward the shoot point
             local swell = math.clamp(x / ORB_SWELL_FRAC, 0, 1)
             swell = swell * swell * (3 - 2 * swell)
             local shrink = math.clamp((x - ORB_SWELL_FRAC) / (1 - ORB_SWELL_FRAC), 0, 1)
@@ -1535,7 +1456,6 @@ function shootOrb(fromPos, toPos, travelTime)
         pfxCall(pfxOrbFinish, orbFx)
     end
 
-    -- the orb is gone, but the trail is left to fade out on its own
     trail.Enabled = false
     light:Destroy()
     core:Destroy()
@@ -1552,8 +1472,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         snapFieldOfView()
     end
 
-    -- Wall portal: switch off collision on the wall behind the opening (same trick as the
-    -- retreat floor) so you can actually walk through. Restored when the portal goes away.
     p.wallParts = {}
     if onWall and not decorative then
         overlap = OverlapParams.new()
@@ -1565,7 +1483,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             end
         end
         overlap.FilterDescendantsInstances = ignore
-        -- portal faces out along -Z, so the wall is on the +Z side
         cutCF = portalCF * CFrame.new(0, 0, WALL_CUT_DEPTH / 2)
         found = workspace:GetPartBoundsInBox(cutCF, Vector3.new(TRIGGER_SIZE.X, TRIGGER_SIZE.Y, WALL_CUT_DEPTH), overlap)
         for _, part in ipairs(found) do
@@ -1575,7 +1492,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             end
         end
     end
-    -- if nothing could be switched off (e.g. a terrain wall) fall back to touch-to-enter
     p.touchMode = onWall and not decorative and #p.wallParts == 0
 
     frame = Instance.new("Part")
@@ -1616,8 +1532,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         playSounds({ { id = EXIT_SOUND.asset, volume = EXIT_PORTAL_SOUND_VOLUME } }, frame)
     end
 
-    -- Walking into a portal isn't enough: you have to go all the way THROUGH it, and a bit
-    -- past (ENTER_DEPTH studs beyond the portal's face), inside its opening, before it fires.
     function enter(root, area, tRoot, portalSpot, toTarget, landPos, retPos)
         area = chosenArea
         chosenArea = nil
@@ -1627,6 +1541,12 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             p.armed = false
             pfxCall(pfxPortalSwallow, p)
             hideGun()
+            if area.serverJoin then
+                snapFieldOfView()
+                joinServer(area.serverJoin)
+                closePortal(p)
+                return
+            end
             teleportToArea(root, area, p)
             return
         end
@@ -1641,8 +1561,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         p.armed = false
         pfxCall(pfxPortalSwallow, p)
         hideGun()
-        -- exit portal sits where you used to land; you appear 2 studs behind it, facing the
-        -- target, and keep walking forward through it
         portalSpot = (tRoot.CFrame * CFrame.new(0, 0, ARRIVE_DISTANCE + RETURN_PORTAL_OFFSET - EXIT_PORTAL_FRONT_DISTANCE)).Position
         toTarget = Vector3.new(tRoot.Position.X - portalSpot.X, 0, tRoot.Position.Z - portalSpot.Z)
         toTarget = toTarget.Magnitude > 0.01 and toTarget.Unit or Vector3.new(0, 0, -1)
@@ -1664,7 +1582,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
             char = LocalPlayer.Character
             root = char and char:FindFirstChild("HumanoidRootPart")
             if root and p.touchMode then
-                -- wall we couldn't cut open (e.g. terrain): touching the portal is enough
                 if p.armed then
                     overlap = OverlapParams.new()
                     overlap.FilterType = Enum.RaycastFilterType.Include
@@ -1678,19 +1595,16 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
                 prev = p.lastRel
                 p.lastRel = rel
 
-                -- startSide = the side of the portal you came from (+1 or -1 along its normal)
                 if p.startSide == nil then
                     p.startSide = rel.Z >= 0 and 1 or -1
                 elseif math.abs(rel.Z) > ENTER_DEPTH + 1 then
                     p.startSide = rel.Z > 0 and 1 or -1
                 end
 
-                -- depth = how far past the plane you are, measured away from where you started
                 if p.armed and prev then
                     dPrev = -p.startSide * prev.Z
                     dNow = -p.startSide * rel.Z
                     if dPrev < ENTER_DEPTH and dNow >= ENTER_DEPTH then
-                        -- where on the portal's opening did you cross the "deep" line?
                         alpha = (ENTER_DEPTH - dPrev) / (dNow - dPrev)
                         crossX = prev.X + (rel.X - prev.X) * alpha
                         crossY = prev.Y + (rel.Y - prev.Y) * alpha
@@ -1750,9 +1664,6 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
     return p
 end
 
--- Retreat arrival: you appear sunk into the ground under the exit portal, hold for a moment,
--- then get thrown up and forward. Only YOU go non-solid (and un-supported) - the floor itself is
--- never touched, so a big floor part keeps its collision everywhere.
 function emergeFromFloor(root, portalPos, normal, look, upSpeed, fwdSpeed, character, hum, charParts, prevPlatformStand, sunkPos, launchUp, forwardApplied, done, launched, launchTime, conn, finish)
     upSpeed = upSpeed or FAILSAFE_LAUNCH_UP
     fwdSpeed = fwdSpeed or FAILSAFE_LAUNCH_FWD
@@ -1760,7 +1671,6 @@ function emergeFromFloor(root, portalPos, normal, look, upSpeed, fwdSpeed, chara
     hum = character and character:FindFirstChildOfClass("Humanoid")
     if not character or not hum then return end
 
-    -- no collision on you
     charParts = {}
     for _, d in ipairs(character:GetDescendants()) do
         if d:IsA("BasePart") then
@@ -1771,13 +1681,11 @@ function emergeFromFloor(root, portalPos, normal, look, upSpeed, fwdSpeed, chara
     prevPlatformStand = hum.PlatformStand
     hum.PlatformStand = true
 
-    -- sunk into the ground, held still
     sunkPos = portalPos - normal * FAILSAFE_SINK_DEPTH
     root.CFrame = CFrame.lookAt(sunkPos, sunkPos + look)
     root.AssemblyLinearVelocity = Vector3.zero
     root.Anchored = true
 
-    -- straight up first; the forward push only starts once you've risen back out of the sink depth
     launchUp = Vector3.new(0, upSpeed, 0)
     forwardApplied = false
     done = false
@@ -1811,7 +1719,6 @@ function emergeFromFloor(root, portalPos, normal, look, upSpeed, fwdSpeed, chara
             finish()
             return
         end
-        -- the humanoid keeps turning collision back on, so keep it off
         for part in pairs(charParts) do
             if part.Parent and part.CanCollide then
                 part.CanCollide = false
@@ -1819,7 +1726,6 @@ function emergeFromFloor(root, portalPos, normal, look, upSpeed, fwdSpeed, chara
         end
         if launched then
             height = (root.Position - portalPos):Dot(normal)
-            -- height starts at -FAILSAFE_SINK_DEPTH; 0 means you've passed the whole sink distance
             if not forwardApplied and height >= 0 then
                 forwardApplied = true
                 if fwdSpeed > 0 then
@@ -1855,7 +1761,6 @@ teleportToArea = function(root, area, fromPortal, opts, origin, flat, look, land
     landPos = area.cframe.Position
     floorExit = opts and opts.floorExit
 
-    -- areas can work out their destination at the last moment (e.g. "behind that player")
     if area.resolve then
         pos, faceAt = area.resolve()
         if pos then
@@ -1871,7 +1776,6 @@ teleportToArea = function(root, area, fromPortal, opts, origin, flat, look, land
 
     floorPos = nil
     if floorExit then
-        -- find the floor at the destination and put the exit portal flat on it
         rayParams = RaycastParams.new()
         rayParams.FilterType = Enum.RaycastFilterType.Exclude
         rayParams.RespectCanCollide = true
@@ -1889,10 +1793,8 @@ teleportToArea = function(root, area, fromPortal, opts, origin, flat, look, land
 
     snapFieldOfView()
     if floorExit then
-        -- retreat arrival: no exit animation
         teleportOut(root, landPos, landPos + look, false, true)
     else
-        -- regular portal: appear 2 studs behind the exit portal and keep walking forward
         behind = landPos - look * EXIT_PORTAL_BEHIND_DISTANCE
         teleportOut(root, behind, behind + look, true)
     end
@@ -1904,7 +1806,6 @@ teleportToArea = function(root, area, fromPortal, opts, origin, flat, look, land
         portalPos = floorPos + Vector3.new(0, WALL_OFFSET, 0)
         buildPortal(CFrame.lookAt(portalPos, portalPos + Vector3.yAxis, Vector3.zAxis), true)
 
-        -- start sunk into the ground under the portal, then get thrown out up and forward
         emergeFromFloor(root, portalPos, Vector3.yAxis, look, opts.upSpeed, opts.fwdSpeed)
     else
         retPos = Vector3.new(landPos.X, landPos.Y + SPAWN_HEIGHT, landPos.Z)
@@ -1914,6 +1815,56 @@ teleportToArea = function(root, area, fromPortal, opts, origin, flat, look, land
     if area.onArrive then
         task.spawn(area.onArrive)
     end
+end
+
+function parseJoinScript(text)
+    local guid = string.rep("%x", 8) .. "%-" .. string.rep("%x", 4) .. "%-" .. string.rep("%x", 4) .. "%-" .. string.rep("%x", 4) .. "%-" .. string.rep("%x", 12)
+    text = tostring(text or "")
+
+    local placeId, jobId = string.match(text, "TeleportToPlaceInstance%s*%(%s*(%d+)%s*,%s*[\"']?(" .. guid .. ")")
+    if not placeId then
+        placeId = string.match(text, "PlaceId%s*:%s*(%d+)") or string.match(text, "PLACE_ID%s*=%s*(%d+)")
+        jobId = string.match(text, "JobId%s*:%s*(" .. guid .. ")") or string.match(text, "JOB_ID%s*=%s*[\"'](" .. guid .. ")")
+    end
+
+    placeId = tonumber(placeId)
+    if not placeId or placeId <= 0 or not jobId then
+        return nil, "No PlaceId + JobId found in that"
+    end
+    return { placeId = placeId, jobId = jobId }
+end
+
+function joinServer(info)
+    local TeleportService = game:GetService("TeleportService")
+    local StarterGuiService = game:GetService("StarterGui")
+
+    local function notify(text)
+        pcall(function()
+            StarterGuiService:SetCore("SendNotification", { Title = "Join server", Text = text, Duration = 6 })
+        end)
+    end
+
+    local failConn
+    failConn = TeleportService.TeleportInitFailed:Connect(function(plr, result, message)
+        if plr ~= LocalPlayer then return end
+        failConn:Disconnect()
+        warn("[RickPortal] couldn't join that server: " .. tostring(message))
+        notify("Couldn't join that server: " .. tostring(message))
+    end)
+    task.delay(30, function()
+        if failConn.Connected then failConn:Disconnect() end
+    end)
+
+    local ok, err = pcall(function()
+        TeleportService:TeleportToPlaceInstance(info.placeId, info.jobId, LocalPlayer)
+    end)
+    if not ok then
+        failConn:Disconnect()
+        warn("[RickPortal] server join failed: " .. tostring(err))
+        notify("Couldn't join that server.")
+        return false
+    end
+    return true
 end
 
 function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ignore, rayOrigin, shotVector, reach, hit, orbEnd, onWall, stuckPos, hand, fromPos)
@@ -1971,7 +1922,7 @@ function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ign
     task.spawn(function()
 
         shotTime = math.max(SHOT_TIME * (orbEnd - fromPos).Magnitude / (center - fromPos).Magnitude, 0.08)
-        local orbTotal = ORB_HOLD_TIME + shotTime   -- charge-up + flight: when the portal actually opens
+        local orbTotal = ORB_HOLD_TIME + shotTime
         zoomFieldOfView(orbTotal)
         task.delay(math.max(orbTotal - PRE_OPEN_TIME, 0), function()
             playSounds({ PRE_OPEN_SOUND }, root)
@@ -2032,7 +1983,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
         end
     end
 
-    -- find the floor under the player and lay a portal flat on it
     rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.RespectCanCollide = true
@@ -2057,7 +2007,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
             return
         end
 
-        -- remember + disable the floor parts under the portal
         floorParts = {}
         overlap = OverlapParams.new()
         overlap.FilterType = Enum.RaycastFilterType.Exclude
@@ -2070,7 +2019,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
             end
         end
 
-        -- remember + disable the character's collision
         charParts = {}
         for _, d in ipairs(character:GetDescendants()) do
             if d:IsA("BasePart") then
@@ -2079,7 +2027,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
             end
         end
 
-        -- PlatformStand stops the humanoid from holding you up off the ground
         prevPlatformStand = humanoid.PlatformStand
         humanoid.PlatformStand = true
         curRoot.AssemblyLinearVelocity = Vector3.new(0, -12, 0)
@@ -2125,7 +2072,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
                 finish(false)
                 return
             end
-            -- the humanoid keeps trying to turn collision back on, so keep it off
             for part in pairs(charParts) do
                 if part.Parent and part.CanCollide then
                     part.CanCollide = false
@@ -2138,8 +2084,6 @@ function performRetreat(character, humanoid, area, track, preflagged, stopTrack,
     end)
 end
 
--- The full retreat: wave animation + pre-open sound, then the floor portal 0.1s later.
--- Both the mini button and the Retreat? popup use this so they look identical.
 function runRetreatSequence(character, humanoid, area, root, track)
     root = character:FindFirstChild("HumanoidRootPart")
     if not character.Parent or not root or humanoid.Health <= 0 or failsafe.retreating then
@@ -2161,7 +2105,6 @@ function triggerFailsafe(character, humanoid, area, root, callback)
     if not area or not root then return end
     if (root.Position - area.cframe.Position).Magnitude < FAILSAFE_MIN_DISTANCE then return end
 
-    -- disarmed until health goes back above the threshold (or you respawn)
     failsafe.armed = false
     failsafe.lastTrigger = os.clock()
 
@@ -2230,8 +2173,6 @@ if LocalPlayer.Character then
     task.spawn(bindFailsafe, LocalPlayer.Character)
 end
 
--- Same retreat as the failsafe, but started on demand (no popup, no low-health needed).
--- Returns true if the retreat started.
 function manualRetreat()
     character = LocalPlayer.Character
     humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2257,13 +2198,11 @@ function manualRetreat()
     return runRetreatSequence(character, humanoid, area)
 end
 
--- ===================== AUTO-DODGE =====================
 ReplicatedStorage = game:GetService("ReplicatedStorage")
 Debris = game:GetService("Debris")
 
 dodge = { enabled = DODGE_ENABLED, cooldownEnd = 0, seen = {} }
 
--- download the dodge sound once at startup (same writefile + getcustomasset route as the portal texture)
 for _, snd in ipairs(DODGE_SOUNDS) do
     task.spawn(function()
         ok, assetOrErr = pcall(function()
@@ -2283,8 +2222,6 @@ function flatXZ(v)
     return Vector3.new(v.X, 0, v.Z)
 end
 
--- How much the attacker must be facing you grows smoothly (an S-curve) with distance:
--- point-blank = anything goes, short range = "kind of facing", max range = "properly facing".
 function dodgeRequiredFacing(dist)
     t = math.clamp((dist - DODGE_POINT_BLANK) / (DODGE_RANGE - DODGE_POINT_BLANK), 0, 1)
     smooth = t * t * (3 - 2 * t)
@@ -2340,7 +2277,6 @@ function shouldDodge(attackerChar, maxRange, anyDirection)
     return look.Unit:Dot(toMe.Unit) >= dodgeRequiredFacing(dist)
 end
 
--- Teleport VFX: clones a particle template onto your root and bursts every emitter in it.
 function emitVFX(root, vfxTemplate, emitCount, keepEnabled)
     part = vfxTemplate:Clone()
     part.Parent = root
@@ -2353,7 +2289,6 @@ function emitVFX(root, vfxTemplate, emitCount, keepEnabled)
     Debris:AddItem(part, 3)
 end
 
--- hidden = true makes your whole body invisible, false brings it back exactly as it was
 hiddenOriginals = setmetatable({}, { __mode = "k" })
 function setVisibility(character, hidden)
     for _, d in ipairs(character:GetDescendants()) do
@@ -2371,8 +2306,6 @@ function setVisibility(character, hidden)
     end
 end
 
--- Hologram-blue highlight over your whole body (hidden behind walls, not through them) that fades out
--- smoothly; one tween drives both the fill and the outline, same as the portal flash.
 function flashDodgeHighlight(character, highlight, tween)
     highlight = Instance.new("Highlight")
     highlight.Name = "RickDodgeFlash"
@@ -2419,7 +2352,6 @@ function playDodgeArrival(character, root, playVoice, playStreakVoice, sound)
         end
     end
 
-    -- quick blink so the teleport reads as a flash (own thread so the dodge poll isn't held up)
     task.spawn(function()
         setVisibility(character, true)  task.wait(0.01)
         setVisibility(character, false) task.wait(0.01)
@@ -2428,10 +2360,6 @@ function playDodgeArrival(character, root, playVoice, playStreakVoice, sound)
     end)
 end
 
--- ===================== BLUE BUTTON BLINK FX (visuals only) =====================
--- Everything below is cosmetic and runs inside a pcall, so a failed effect can never stop the teleport.
-
--- an anchored, non-colliding neon part
 function behindFxPart(shape, size, color, transparency, cf)
     local part = Instance.new("Part")
     part.Shape = shape
@@ -2449,7 +2377,6 @@ function behindFxPart(shape, size, color, transparency, cf)
     return part
 end
 
--- tweens `inst` to `goal`, then destroys it
 function behindFxTween(inst, time, goal, style, direction)
     local tween = TweenService:Create(
         inst,
@@ -2463,7 +2390,6 @@ function behindFxTween(inst, time, goal, style, direction)
     return tween
 end
 
--- y of the floor under pos (nil if there's nothing within 12 studs)
 function behindFxFloor(pos)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
@@ -2479,7 +2405,6 @@ function behindFxFloor(pos)
     return hit and hit.Position.Y or nil
 end
 
--- glowing ball that swells and fades, with a light that fades with it
 function behindFxFlash(pos, startSize, endSize, time, color)
     local ball = behindFxPart(Enum.PartType.Ball, Vector3.new(startSize, startSize, startSize), color, 0.1, CFrame.new(pos))
     local glow = Instance.new("PointLight")
@@ -2492,7 +2417,6 @@ function behindFxFlash(pos, startSize, endSize, time, color)
     behindFxTween(ball, time, { Size = Vector3.new(endSize, endSize, endSize), Transparency = 1 })
 end
 
--- vertical beam of light that stretches upward and thins out
 function behindFxPillar(pos, height, time)
     local pillar = behindFxPart(
         Enum.PartType.Cylinder,
@@ -2504,7 +2428,6 @@ function behindFxPillar(pos, height, time)
     behindFxTween(pillar, time, { Size = Vector3.new(height * 1.4, 0.1, 0.1), Transparency = 1 })
 end
 
--- expanding ring lying on the floor (a hollow circle drawn on a flat invisible part)
 function behindFxRing(pos, floorY, size, delay)
     task.delay(delay, function()
         local ring = behindFxPart(Enum.PartType.Block, Vector3.new(1, 0.05, 1), BEHIND_FX_COLOR, 1, CFrame.new(pos.X, floorY + 0.1, pos.Z))
@@ -2521,7 +2444,7 @@ function behindFxRing(pos, floorY, size, delay)
         local circle = Instance.new("Frame")
         circle.AnchorPoint = Vector2.new(0.5, 0.5)
         circle.Position = UDim2.fromScale(0.5, 0.5)
-        circle.Size = UDim2.fromScale(0.9, 0.9)   -- leaves room so the stroke is never clipped by the canvas
+        circle.Size = UDim2.fromScale(0.9, 0.9)
         circle.BackgroundTransparency = 1
         circle.Parent = gui
 
@@ -2542,7 +2465,6 @@ function behindFxRing(pos, floorY, size, delay)
     end)
 end
 
--- omnidirectional burst of glowing sparks
 function behindFxSparks(pos, count)
     local anchor = behindFxPart(Enum.PartType.Block, Vector3.new(0.2, 0.2, 0.2), BEHIND_FX_COLOR, 1, CFrame.new(pos))
     local emitter = Instance.new("ParticleEmitter")
@@ -2569,7 +2491,6 @@ function behindFxSparks(pos, count)
     Debris:AddItem(anchor, 1.2)
 end
 
--- bright dash line from where you were to where you land; it passes right through the enemy
 function behindFxStreak(a, b)
     local len = (b - a).Magnitude
     if len < 0.5 then return end
@@ -2580,8 +2501,6 @@ function behindFxStreak(a, b)
     behindFxTween(core, BEHIND_FX_STREAK_TIME * 0.8, { Size = Vector3.new(0.02, 0.02, len), Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 end
 
--- glowing hologram copies of your body (head, torso, limbs, custom head mesh), left along the dash path
--- and faded out. Must run BEFORE you move, because it copies your body where it stands.
 function behindFxAfterimages(character, pathVector)
     local sources = {}
     for _, child in ipairs(character:GetChildren()) do
@@ -2601,7 +2520,6 @@ function behindFxAfterimages(character, pathVector)
                 return c
             end)
             if made and copy then
-                -- keep only the mesh that gives the part its shape, nothing else (no joints, decals, scripts, textures)
                 for _, child in ipairs(copy:GetChildren()) do
                     if child:IsA("DataModelMesh") then
                         if child:IsA("FileMesh") then
@@ -2630,7 +2548,6 @@ function behindFxAfterimages(character, pathVector)
     end
 end
 
--- the landing hit on the screen: FOV punch, a short blur, and a blue flash
 function behindFxScreen()
     local camera = workspace.CurrentCamera
     if camera then
@@ -2662,7 +2579,6 @@ function behindFxScreen()
     end
 end
 
--- everything at the spot you're leaving + the dash line
 function behindFxDepart(character, originPos, landPos)
     behindFxAfterimages(character, landPos - originPos)
     behindFxFlash(originPos, 1, 7, 0.22, BEHIND_FX_CORE_COLOR)
@@ -2676,7 +2592,6 @@ function behindFxDepart(character, originPos, landPos)
     behindFxStreak(originPos, landPos)
 end
 
--- everything where you land
 function behindFxArrive(landPos)
     behindFxFlash(landPos, 1.5, 6, 0.2, BEHIND_FX_CORE_COLOR)
     behindFxFlash(landPos, 2, 9, 0.34, BEHIND_FX_COLOR)
@@ -2689,8 +2604,6 @@ function behindFxArrive(landPos)
     behindFxScreen()
 end
 
--- the teleport itself: burst, land behind them, highlight, sounds, blink. Returns false if it couldn't.
--- fancy = true (the blue button) adds the full blink FX on top; the auto-dodge leaves it off.
 function teleportBehind(attackerChar, playVoice, playStreakVoice, behindDistance, fancy)
     character = LocalPlayer.Character
     humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -2701,10 +2614,8 @@ function teleportBehind(attackerChar, playVoice, playStreakVoice, behindDistance
     local originPos = root.Position
     local useFx = fancy and BEHIND_FX_ENABLED
 
-    -- burst at the spot you're leaving (a missing template never blocks the teleport)
     emitDodgeBurst(root)
 
-    -- land behind them, facing them
     look = flatXZ(aRoot.CFrame.LookVector)
     look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
     landPos = aRoot.Position - look * (behindDistance or DODGE_BEHIND_DISTANCE)
@@ -2725,9 +2636,6 @@ end
 
 dodgeCameraLock = { token = 0 }
 
--- Rick Prime dialogue box. Call rickSay(lines) any time to play a line set; rickSay() with no argument plays
--- RICK_FINALE_LINES. A "line set" is a list of { Text, Color (ColorSequence), TextStrokeColor, Bold, Italic,
--- Shake = { Enabled, Intensity, Lifetime }, TypeSpeed } entries, exactly like RICK_FINALE_LINES below.
 KJDialogue = (function()
     local Players = game:GetService("Players")
     local TweenService = game:GetService("TweenService")
@@ -2769,7 +2677,7 @@ KJDialogue = (function()
             or game:GetService("ReplicatedStorage").Resources.UFW.TekrinnDialogue.KJDialogue:Clone()
         local v_u_24 = 0
         local v_u_25 = 0
-        local startDelay = (lines[1] and lines[1].StartDelay) or 0 -- optional lead-in: image, name and letters all wait this long
+        local startDelay = (lines[1] and lines[1].StartDelay) or 0
         local v26    = startDelay
 
         if v_u_22:GetAttribute("Created") then
@@ -2909,7 +2817,7 @@ end)()
 
 RICK_FINALE_LINES = {
     {
-        StartDelay      = 0.48, -- the same wait the old "Alright... " lead-in gave before this line started
+        StartDelay      = 0.48,
         Text            = "LETS DO THIS THEN!",
         Color           = ColorSequence.new({
             ColorSequenceKeypoint.new(0, Color3.fromRGB(0,   0,   0)),
@@ -2923,7 +2831,6 @@ RICK_FINALE_LINES = {
     },
 }
 
--- plain white text (no colour gradient, no bold/italic, no shake) for the sixth-dodge voiceline
 RICK_QUIT_LINES = {
     {
         Text            = "This guy does NOT know when to quit!",
@@ -2936,8 +2843,6 @@ RICK_QUIT_LINES = {
     },
 }
 
--- Reusable: rickSay() plays the finale lines, rickSay(myLines) plays any other line set.
--- Safe to call from anywhere; it runs on its own thread and never errors out the caller.
 function rickSay(lines)
     task.spawn(function()
         local ok, err = pcall(KJDialogue.Speak, LocalPlayer.Character, lines or RICK_FINALE_LINES)
@@ -2947,10 +2852,6 @@ function rickSay(lines)
     end)
 end
 
--- Holds the camera AND your character pointed at the target for `duration` seconds.
--- Shiftlock keeps spinning your character back to the camera, so AutoRotate is switched off while the
--- hold lasts and your root is turned toward the target every frame; the camera ends up pointing at them
--- too, so shiftlock keeps you facing them afterwards. AutoRotate goes back to what it was.
 function lockCameraOn(targetRoot, duration, camera, token)
     if not targetRoot then return end
     dodgeCameraLock.token = dodgeCameraLock.token + 1
@@ -3047,12 +2948,11 @@ function startDodge(attackerChar, attackerId, nextCount, playStreakVoice, playVo
         lockCameraOn(attackerChar:FindFirstChild("HumanoidRootPart"), DODGE_CAMERA_LOCK_TIME)
         task.spawn(clickMouse)
         if playStreakVoice then
-            rickSay(RICK_QUIT_LINES) -- shows up with the sixth-dodge audio
+            rickSay(RICK_QUIT_LINES)
         end
     end
 end
 
--- polling the other players' playing tracks catches animations that were played on their end
 dodgeConn = RunService.Heartbeat:Connect(function()
     if not dodge.enabled then return end
 
@@ -3083,10 +2983,8 @@ dodgeLeftConn = Players.PlayerRemoving:Connect(function(plr)
     dodge.seen[plr] = nil
 end)
 
--- ===================== VOID RESCUE =====================
 void = { lastNear = nil, lastNearTime = 0, lastTrigger = -math.huge }
 
--- a valid target is alive and itself above the void line
 function isValidVoidTarget(plr)
     char = plr and plr.Character
     hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -3100,7 +2998,6 @@ voidConn = RunService.Heartbeat:Connect(function()
     hum = char and char:FindFirstChildOfClass("Humanoid")
     if not root or not hum or hum.Health <= 0 then return end
 
-    -- above the line: keep track of who you're standing near
     if root.Position.Y >= VOID_Y then
         best, bestDist = nil, VOID_NEAR_RADIUS
         for _, plr in ipairs(Players:GetPlayers()) do
@@ -3118,7 +3015,6 @@ voidConn = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- below it (but not if you're at an area that is meant to be down there, like the Garage)
     for _, a in ipairs(AREAS) do
         if a.voidSafe and (root.Position - a.cframe.Position).Magnitude <= VOID_SAFE_RADIUS then
             return
@@ -3155,7 +3051,6 @@ voidConn = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ===================== DEATH TELEPORT =====================
 deathTp = { lastCF = nil, pendingCF = nil, diedConn = nil }
 
 deathTrackConn = RunService.Heartbeat:Connect(function()
@@ -3802,8 +3697,6 @@ function buildPortalButton()
     return MobileCombatGui, Portal
 end
 
--- Small portal button parked next to the main one (it's a child, so it follows
--- the main button if it gets moved or resized).
 function buildMiniRetreatButton(parent)
     mini = Instance.new("ImageButton")
     mini.Name = "MiniRetreat"
@@ -3890,9 +3783,6 @@ function buildMiniRetreatButton(parent)
     end
 end
 
--- Blue mini button parked on top of the main portal button. Teleports you 6 studs behind the
--- nearest enemy with the dodge VFX (burst + blue flash + blink) and ONLY the always-on dodge sound
--- (EXIT_SOUND): no voiceline, no streak voiceline.
 function nearestEnemyChar()
     local character = LocalPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -3910,7 +3800,6 @@ function nearestEnemyChar()
     return best
 end
 
--- left click for the blue button (the auto-dodge keeps using clickMouse)
 function leftClick()
     RunService.RenderStepped:Wait()
     if BEHIND_CLICK_METHOD == "vim" then
@@ -3922,7 +3811,7 @@ function leftClick()
             vim:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 1)
         end)
     elseif keypress and keyrelease then
-        pcall(keypress, 0x01)   -- 0x01 = VK_LBUTTON
+        pcall(keypress, 0x01)
         task.wait(0.05)
         pcall(keyrelease, 0x01)
     else
@@ -4003,7 +3892,6 @@ function buildMiniBehindButton(parent)
         if os.clock() < cooldownEnd or failsafe.retreating then return end
         local enemyChar = nearestEnemyChar()
         if not enemyChar then return end
-        -- playVoice = false, playStreakVoice = false -> only EXIT_SOUND plays
         if teleportBehind(enemyChar, false, false, BEHIND_BUTTON_DISTANCE, true) then
             startCooldown()
             lockCameraOn(enemyChar:FindFirstChild("HumanoidRootPart"), DODGE_CAMERA_LOCK_TIME)
@@ -4126,11 +4014,7 @@ function getEntryHumanoid(entry)
     return model:FindFirstChildOfClass("Humanoid"), model
 end
 
--- Polls every frame while health is changing. If nothing changes for
--- HEALTH_STALE_TIME seconds it stops polling and just waits for a change event.
 function attachHealthBar(entry, fill, pctLabel)
-    -- everything here is local on purpose: every row in the menu calls this, and shared globals made
-    -- all rows drive the LAST row's bar (and leaked their Heartbeat connections)
     local destroyed = false
     local tracking = false
     local heartbeatConn = nil
@@ -4167,7 +4051,6 @@ function attachHealthBar(entry, fill, pctLabel)
         end
     end
 
-    -- returns true if anything changed since the last sample
     function sample()
         local hum = getEntryHumanoid(entry)
         local health = hum and hum.Health or -1
@@ -4305,7 +4188,7 @@ function openTargetMenu()
     headerPx = 44
     tabsPx = 34
     cardPad = 12
-    visibleRows = math.min(math.max(#targets, #AREAS, 1), 5)
+    visibleRows = math.min(math.max(#targets, #AREAS + (SERVER_JOIN_ENABLED and 1 or 0), 1), 5)
     listHeight = visibleRows * rowPx + (visibleRows - 1) * padPx
     listTop = headerPx + 6 + tabsPx + 10
     panelHeight = cardPad * 2 + listTop + listHeight
@@ -4353,7 +4236,6 @@ function openTargetMenu()
     panelPadding.PaddingRight = UDim.new(0, cardPad)
     panelPadding.Parent = panel
 
-    -- header
     header = Instance.new("Frame")
     header.Name = "Header"
     header.BackgroundTransparency = 1
@@ -4400,7 +4282,6 @@ function openTargetMenu()
     pillCorner.CornerRadius = UDim.new(1, 0)
     pillCorner.Parent = countPill
 
-    -- tabs
     tabBar = Instance.new("Frame")
     tabBar.Name = "Tabs"
     tabBar.BackgroundColor3 = rowColor
@@ -4448,7 +4329,6 @@ function openTargetMenu()
         tabButtons[name] = btn
     end
 
-    -- list
     list = Instance.new("ScrollingFrame")
     list.Name = "List"
     list.BackgroundTransparency = 1
@@ -4651,7 +4531,7 @@ function openTargetMenu()
 
     function buildAreaRows()
         countPill.Text = #AREAS .. (#AREAS == 1 and " area" or " areas")
-        setCanvas(#AREAS)
+        setCanvas(#AREAS + (SERVER_JOIN_ENABLED and 1 or 0))
 
         myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
@@ -4727,6 +4607,110 @@ function openTargetMenu()
                 openPortal(area)
             end)
         end
+
+        if SERVER_JOIN_ENABLED then
+            local joinBtnW = 58
+            local idleText = "Join a server: paste a join script"
+            local errorColor = Color3.fromRGB(255, 110, 110)
+
+            local joinRow = Instance.new("Frame")
+            joinRow.Name = "JoinServer"
+            joinRow.LayoutOrder = #AREAS + 1
+            joinRow.BackgroundColor3 = rowColor
+            joinRow.BorderSizePixel = 0
+            joinRow.Size = UDim2.new(1, 0, 0, rowPx)
+            joinRow.Parent = list
+            local joinCorner = Instance.new("UICorner")
+            joinCorner.CornerRadius = UDim.new(0, 12)
+            joinCorner.Parent = joinRow
+
+            local joinStatus = makeText(joinRow, {
+                Name = "Status",
+                Position = UDim2.new(0, 12, 0, 5),
+                Size = UDim2.new(1, -(joinBtnW + 28), 0, 14),
+                FontFace = fontSemi,
+                Text = idleText,
+                TextSize = 12,
+                TextColor3 = mutedColor,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd,
+            })
+
+            local joinBox = Instance.new("TextBox")
+            joinBox.Name = "JoinScript"
+            joinBox.BackgroundColor3 = Color3.fromRGB(14, 18, 16)
+            joinBox.BorderSizePixel = 0
+            joinBox.Position = UDim2.new(0, 8, 0, 22)
+            joinBox.Size = UDim2.new(1, -(joinBtnW + 24), 0, rowPx - 29)
+            joinBox.ClearTextOnFocus = false
+            joinBox.MultiLine = true
+            joinBox.TextWrapped = false
+            joinBox.ClipsDescendants = true
+            joinBox.FontFace = fontReg
+            joinBox.TextSize = 13
+            joinBox.TextColor3 = textColor
+            joinBox.PlaceholderText = "Paste join script here"
+            joinBox.PlaceholderColor3 = mutedColor
+            joinBox.Text = ""
+            joinBox.TextXAlignment = Enum.TextXAlignment.Left
+            joinBox.TextYAlignment = Enum.TextYAlignment.Top
+            joinBox.ZIndex = 2
+            joinBox.Parent = joinRow
+            local boxCorner = Instance.new("UICorner")
+            boxCorner.CornerRadius = UDim.new(0, 8)
+            boxCorner.Parent = joinBox
+            local boxPad = Instance.new("UIPadding")
+            boxPad.PaddingLeft = UDim.new(0, 6)
+            boxPad.PaddingRight = UDim.new(0, 6)
+            boxPad.PaddingTop = UDim.new(0, 2)
+            boxPad.Parent = joinBox
+
+            local joinBtn = Instance.new("TextButton")
+            joinBtn.Name = "JoinButton"
+            joinBtn.AutoButtonColor = false
+            joinBtn.BackgroundColor3 = accent
+            joinBtn.BorderSizePixel = 0
+            joinBtn.AnchorPoint = Vector2.new(1, 0.5)
+            joinBtn.Position = UDim2.new(1, -8, 0.5, 0)
+            joinBtn.Size = UDim2.new(0, joinBtnW, 1, -16)
+            joinBtn.FontFace = fontBold
+            joinBtn.Text = "Join"
+            joinBtn.TextSize = 14
+            joinBtn.TextColor3 = accentText
+            joinBtn.ZIndex = 2
+            joinBtn.Parent = joinRow
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 8)
+            btnCorner.Parent = joinBtn
+
+            local function setStatus(msg, color)
+                joinStatus.Text = msg
+                joinStatus.TextColor3 = color
+            end
+
+            joinBox:GetPropertyChangedSignal("Text"):Connect(function()
+                if joinBox.Text == "" then
+                    setStatus(idleText, mutedColor)
+                    return
+                end
+                local info, why = parseJoinScript(joinBox.Text)
+                if info then
+                    setStatus("Ready: place " .. info.placeId .. ", server " .. string.sub(info.jobId, 1, 8) .. "..", accent)
+                else
+                    setStatus(why, errorColor)
+                end
+            end)
+
+            joinBtn.Activated:Connect(function()
+                local info, why = parseJoinScript(joinBox.Text)
+                if not info then
+                    setStatus(joinBox.Text == "" and "Paste a join script first" or why, errorColor)
+                    return
+                end
+                closeTargetMenu()
+                openPortal({ name = "Server " .. string.sub(info.jobId, 1, 8), cframe = CFrame.new(), serverJoin = info })
+            end)
+        end
     end
 
     activeTab = nil
@@ -4799,21 +4783,6 @@ buttonConn = portalButton.Activated:Connect(function()
 end)
 
 RickRegen = (function()
---[[
-	RICK PRIME REGEN  -  client-side visual, R6 only
-	Plays on every respawn (not on execute).
-
-	Everything is local. Your real character is only hidden + frozen while it plays
-	(a fake clone does the exploding), then restored exactly where you stood.
-
-	Timeline:  windup -> BURST (slowmo) -> carnage -> veins regrow -> torso hauls up
-	           -> limbs yanked back one by one -> final slam
-
-	Corpse flow: the BURST + carnage happen the moment you DIE. The splattered corpse stays where it fell.
-	When you respawn, the new body is hidden + parked on the corpse (as if you were still dead); SpawnDelay
-	later the corpse starts regenerating (veins regrow -> lift -> pull -> slam) into the new body.
-]]
-
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Lighting   = game:GetService("Lighting")
@@ -4822,33 +4791,25 @@ local TweenService = game:GetService("TweenService")
 local lp = Players.LocalPlayer
 local PI = math.pi
 
------------------------------------------------------------------- CONFIG
 local CFG = {
-	AutoPlay    = true,  -- plays on every respawn (not on execute)
-	SpawnWait   = 0,     -- max seconds to wait for clothes to load after a respawn (0 = instant)
-	SpawnDelay  = 0.4,   -- seconds after every respawn before the corpse starts regenerating
-
-	-- timeline (sim seconds)
-	T_Burst     = 0.65,  -- windup length before everything blows
-	T_Regrow    = 2.0,   -- veins start regenerating
-	T_Lift      = 3.0,   -- torso hauls itself back up
-	T_Pull      = 3.75,  -- limbs start getting yanked home
+	AutoPlay    = true,
+	SpawnWait   = 0,
+	SpawnDelay  = 0.4,
+	T_Burst     = 0.65,
+	T_Regrow    = 2.0,
+	T_Lift      = 3.0,
+	T_Pull      = 3.75,
 	LiftTime    = 0.85,
-	PullTime    = 0.46,  -- per limb
+	PullTime    = 0.46,
 	PullStagger = 0.10,
-
-	-- burst feel
 	BurstSpeed  = { 24, 42 },
 	Gravity     = 105,
-	Slowmo      = 0.18,  -- time scale right after the burst
-	SlowTime    = 0.6,   -- how long it takes to ramp back to full speed
-
+	Slowmo      = 0.18,
+	SlowTime    = 0.6,
 	BloodColor  = Color3.fromRGB(122, 6, 14),
 	VeinDark    = Color3.fromRGB(70, 0, 10),
 	VeinHot     = Color3.fromRGB(255, 40, 55),
 }
-
--- R6 sockets. Every local CFrame has +Y pointing OUT of the cut face.
 local SPEC = {
 	{ name = "Torso" },
 	{ name = "Head", order = 5, size = Vector3.new(1.7, 0.14, 0.8),
@@ -4872,13 +4833,10 @@ local SPEC = {
 		socket = CFrame.new(-0.5, -1, 0) * CFrame.Angles(PI, 0, 0),
 		dir = Vector3.new(-0.7, 0.35, -0.6) },
 }
-
------------------------------------------------------------------- UTILS
 local rng = Random.new()
 local function rr(a, b) return rng:NextNumber(a, b) end
 local function clamp01(x) return math.clamp(x, 0, 1) end
 local function lerp(a, b, t) return a + (b - a) * t end
-
 local Ease = {}
 function Ease.inCubic(t) return t * t * t end
 function Ease.outCubic(t) local u = 1 - t return 1 - u * u * u end
@@ -4888,21 +4846,17 @@ function Ease.inOutCubic(t)
 	return 1 - u * u * u / 2
 end
 function Ease.outQuint(t) local u = 1 - t return 1 - u ^ 5 end
-
 local function bezier(a, b, c, t)
 	local u = 1 - t
 	return a * (u * u) + b * (2 * u * t) + c * (t * t)
 end
-
 local function heartbeat(phase)
 	local f = phase % 1
 	return math.exp(-f * 10) + 0.55 * math.exp(-((f - 0.24) % 1) * 12)
 end
-
 local function jitter(cf, s)
 	return cf * CFrame.new(rr(-s, s), 0, rr(-s * 0.8, s * 0.8))
 end
-
 local function newPart(parent, size, color, shape, material)
 	local p = Instance.new("Part")
 	p.Anchored = true
@@ -4920,15 +4874,12 @@ local function newPart(parent, size, color, shape, material)
 	p.Parent = parent
 	return p
 end
-
------------------------------------------------------------------- SHARED STATE
 local S = {
 	running = false, Fired = false, fadeAt = math.huge, splats = 0, groundY = 0,
 	folder = nil, rp = nil,
 	trauma = 0, flash = 0, fov = 0, zoom = 0, beatPhase = 0,
 }
 local fx, drops = {}, {}
-
 local function addFx(fn) fx[#fx + 1] = fn end
 local function runFx(dt)
 	local i = 1
@@ -4936,8 +4887,6 @@ local function runFx(dt)
 		if fx[i](dt) then table.remove(fx, i) else i = i + 1 end
 	end
 end
-
------------------------------------------------------------------- BLOOD / IMPACT FX
 local function glowBall(pos, color, size, life)
 	local p = newPart(S.folder, Vector3.new(1, 1, 1), color, Enum.PartType.Ball, Enum.Material.Neon)
 	p.Position = pos
@@ -4954,7 +4903,6 @@ local function glowBall(pos, color, size, life)
 		end
 	end)
 end
-
 local function puddle(pos, scale)
 	if S.splats >= 90 then return end
 	S.splats = S.splats + 1
@@ -4979,7 +4927,6 @@ local function puddle(pos, scale)
 		end
 	end)
 end
-
 local function spawnDrop(pos, vel)
 	local s = rr(0.12, 0.46)
 	local col = CFG.BloodColor:Lerp(Color3.fromRGB(190, 15, 25), rr(0, 0.6))
@@ -4987,7 +4934,6 @@ local function spawnDrop(pos, vel)
 	p.CFrame = CFrame.new(pos)
 	drops[#drops + 1] = { p = p, pos = pos, vel = vel, size = s }
 end
-
 local function stepDrops(dt)
 	local i = 1
 	while i <= #drops do
@@ -5013,8 +4959,6 @@ local function stepDrops(dt)
 		end
 	end
 end
-
------------------------------------------------------------------- STUMPS (cut faces + bone + mist)
 local function makeEmitter(parent)
 	local e = Instance.new("ParticleEmitter")
 	e.Texture = "rbxasset://textures/particles/smoke_main.dds"
@@ -5042,24 +4986,20 @@ local function makeEmitter(parent)
 	e.Parent = parent
 	return e
 end
-
 local function makeStump(parent, piece, localCF, size, limbName)
 	local nm = limbName or piece.name
 	local isSocket = piece.name == "Torso"
 	local isLeg, isArm = nm:find("Leg") ~= nil, nm:find("Arm") ~= nil
-	local noBone = isSocket or nm == "Head" -- sockets use the pelvis / glenoid cup / neck stack instead of a bare stick
-
+	local noBone = isSocket or nm == "Head"
 	local cap = newPart(parent, size, Color3.fromRGB(132, 8, 18))
 	cap.Name = "Cap"
 	cap.Transparency = 1
-	-- broken shaft: ivory cortex with a dark marrow core showing through both ends
 	local bone = newPart(parent, Vector3.new(0.55, 0.3, 0.3), Color3.fromRGB(238, 228, 208):Lerp(CFG.BloodColor, rr(0, 0.25)), Enum.PartType.Cylinder)
 	bone.Name = "Bone"
 	bone.Transparency = 1
 	local marrow = newPart(parent, Vector3.new(0.59, 0.15, 0.15), Color3.fromRGB(150, 36, 46), Enum.PartType.Cylinder)
 	marrow.Reflectance = 0.2
 	marrow.Transparency = 1
-
 	local shards, extras = {}, {}
 	local function extra(sz, cf, col, shape, refl)
 		local ep = newPart(parent, sz, col, shape)
@@ -5068,7 +5008,6 @@ local function makeStump(parent, piece, localCF, size, limbName)
 		extras[#extras + 1] = { part = ep, cf = cf }
 	end
 	if not noBone then
-		-- jagged splinters sticking out of the broken bone
 		for _ = 1, 3 do
 			local sp = newPart(parent, Vector3.new(0.09, 0.09, rr(0.3, 0.65)), Color3.fromRGB(232, 220, 196):Lerp(CFG.BloodColor, rr(0, 0.35)))
 			sp.Transparency = 1
@@ -5077,7 +5016,6 @@ local function makeStump(parent, piece, localCF, size, limbName)
 				cf = CFrame.new(rr(-0.26, 0.26), rr(0.12, 0.4), rr(-0.26, 0.26)) * CFrame.Angles(PI / 2 + rr(-0.55, 0.55), rr(0, PI * 2), rr(-0.55, 0.55)),
 			}
 		end
-		-- the joint end of the bone pushed out of the cut: femoral head on a short neck, or humeral head
 		local headCol = Color3.fromRGB(240, 232, 214):Lerp(CFG.BloodColor, rr(0, 0.25))
 		if isLeg then
 			extra(Vector3.new(0.55, 0.55, 0.55), CFrame.new(0.05, 0.68, 0), headCol, Enum.PartType.Ball, 0.1)
@@ -5086,7 +5024,6 @@ local function makeStump(parent, piece, localCF, size, limbName)
 			extra(Vector3.new(0.42, 0.42, 0.42), CFrame.new(0.03, 0.54, 0), headCol, Enum.PartType.Ball, 0.1)
 		end
 	elseif isSocket and isArm then
-		-- shoulder socket: a ring of bone around a dark cup (the glenoid)
 		for i = 1, 7 do
 			local ang = i / 7 * PI * 2
 			extra(Vector3.new(0.16, 0.1, 0.14),
@@ -5100,7 +5037,6 @@ local function makeStump(parent, piece, localCF, size, limbName)
 		shards = shards, extras = extras, em = makeEmitter(cap), acc = 0, shown = false,
 	}
 end
-
 local function updateStump(s)
 	local base = s.piece.disp * s.localCF
 	s.cap.CFrame = base * CFrame.new(0, 0.04, 0)
@@ -5114,7 +5050,6 @@ local function updateStump(s)
 		ex.part.CFrame = base * ex.cf
 	end
 end
-
 local function showStump(s, on)
 	local t = on and 0 or 1
 	s.cap.Transparency = t
@@ -5124,15 +5059,11 @@ local function showStump(s, on)
 	for _, ex in ipairs(s.extras) do ex.part.Transparency = t end
 	s.shown = on
 end
-
------------------------------------------------------------------- VEINS
--- modes: off | tether | dangle | grow | attached | retract
 local function setMode(v, mode, t)
 	v.mode = mode
 	v.t0 = t
 	v.beam.Enabled = (mode ~= "off")
 end
-
 local function makeVein(parent, src, srcLocal, dst, dstLocal, kind, width)
 	local a = newPart(parent, Vector3.new(0.1, 0.1, 0.1), Color3.new(1, 0, 0))
 	local b = newPart(parent, Vector3.new(0.1, 0.1, 0.1), Color3.new(1, 0, 0))
@@ -5163,7 +5094,6 @@ local function makeVein(parent, src, srcLocal, dst, dstLocal, kind, width)
 		tipPos = nil, lastTip = nil, tip0 = nil,
 	}
 end
-
 local function updateVein(v, sdt, clock, heat, beat)
 	if v.mode == "off" then return end
 	local srcCF = v.src.disp * v.srcLocal
@@ -5171,13 +5101,11 @@ local function updateVein(v, sdt, clock, heat, beat)
 	local dp = (v.dst.disp * v.dstLocal).Position
 	local mode = v.mode
 	local tip, wmul, wiggle = dp, 1, 0.5
-
 	if mode == "tether" then
 		local dist = (dp - sp).Magnitude
 		wmul = math.clamp(1.3 - dist / v.snapDist, 0.15, 1)
 		wiggle = 0.3
 		if dist > v.snapDist then
-			-- SNAP: whips back and dangles off the limb
 			v.tipPos = dp
 			setMode(v, "dangle", clock)
 			mode = "dangle"
@@ -5186,7 +5114,6 @@ local function updateVein(v, sdt, clock, heat, beat)
 			end
 		end
 	end
-
 	if mode == "dangle" then
 		local sway = Vector3.new(math.sin(clock * 3.1 + v.seed), 0, math.cos(clock * 2.6 + v.seed * 1.7)) * 0.6
 		local target = sp + srcCF.UpVector * (v.hang * 0.3) + Vector3.new(0, -v.hang * 0.75, 0) + sway
@@ -5227,8 +5154,6 @@ local function updateVein(v, sdt, clock, heat, beat)
 		end
 	end
 	v.lastTip = tip
-
-	-- orient both endpoints so the bezier bows perpendicular to the vein, spinning over time
 	local vec = tip - sp
 	local dist = vec.Magnitude
 	local fwd = (dist > 1e-3) and (vec / dist) or Vector3.yAxis
@@ -5239,11 +5164,9 @@ local function updateVein(v, sdt, clock, heat, beat)
 	local e2 = fwd:Cross(d)
 	v.a.CFrame = CFrame.fromMatrix(sp, d, e2)
 	v.b.CFrame = CFrame.fromMatrix(tip, d, e2)
-
 	local amp = math.min(dist * 0.3, 3.2) * wiggle * v.wob
 	v.beam.CurveSize0 = amp * math.sin(clock * 5 + v.seed)
 	v.beam.CurveSize1 = -amp * math.sin(clock * 4.1 + v.seed * 1.7)
-
 	local w = v.width * wmul * (1 + 0.55 * beat)
 	v.beam.Width0 = w
 	v.beam.Width1 = w * 0.55
@@ -5252,14 +5175,11 @@ local function updateVein(v, sdt, clock, heat, beat)
 	v.beam.Color = ColorSequence.new(c0, c1)
 end
 
------------------------------------------------------------------- PHYSICS (custom, so it stays smooth + controllable)
 local LOCAL_N = { Vector3.xAxis, -Vector3.xAxis, Vector3.yAxis, -Vector3.yAxis, Vector3.zAxis, -Vector3.zAxis }
-
 local function groundAt(pos)
 	local r = workspace:Raycast(pos + Vector3.new(0, 3, 0), Vector3.new(0, -70, 0), S.rp)
 	return r and r.Position.Y or S.groundY
 end
-
 local function onImpact(p, impact, pos, gy)
 	local now = os.clock()
 	if now - p.lastImpact < 0.12 then return end
@@ -5270,7 +5190,6 @@ local function onImpact(p, impact, pos, gy)
 		spawnDrop(pos, Vector3.new(rr(-16, 16), rr(8, 26), rr(-16, 16)))
 	end
 end
-
 local function simulate(p, dt)
 	p.vel = p.vel + Vector3.new(0, -CFG.Gravity * dt, 0)
 	local pos = p.cf.Position + p.vel * dt
@@ -5278,7 +5197,6 @@ local function simulate(p, dt)
 	local w = p.av.Magnitude
 	if w > 1e-3 then rot = CFrame.fromAxisAngle(p.av / w, w * dt) * rot end
 	local cf = CFrame.new(pos) * rot
-
 	local gy = groundAt(pos)
 	local half = p.size * 0.5
 	local lowest = math.huge
@@ -5290,7 +5208,6 @@ local function simulate(p, dt)
 			end
 		end
 	end
-
 	local contact = false
 	if lowest < gy then
 		contact = true
@@ -5306,8 +5223,6 @@ local function simulate(p, dt)
 		end
 		local k = math.exp(-dt * 5)
 		p.vel = Vector3.new(p.vel.X * k, p.vel.Y, p.vel.Z * k)
-
-		-- topple onto whichever face is closest to pointing down
 		local down = Vector3.new(0, -1, 0)
 		local bestD, bestN = -2, nil
 		for _, n in ipairs(LOCAL_N) do
@@ -5325,7 +5240,6 @@ local function simulate(p, dt)
 	else
 		p.av = p.av * math.exp(-dt * 0.4)
 	end
-
 	if contact and p.vel.Magnitude < 1.5 and p.av.Magnitude < 0.6 then
 		p.still = p.still + dt
 		if p.still > 0.2 then
@@ -5339,14 +5253,12 @@ local function simulate(p, dt)
 	p.cf = cf
 end
 
------------------------------------------------------------------- GIBS (meat + bone chunks)
 local gibs = {}
 local FLESH = {
 	Color3.fromRGB(122, 8, 16), Color3.fromRGB(150, 22, 30), Color3.fromRGB(196, 78, 84),
 	Color3.fromRGB(88, 4, 10), Color3.fromRGB(214, 176, 120),
 }
 local BONE_COL = Color3.fromRGB(236, 226, 204)
-
 local function spawnGib(pos, vel, bone)
 	if #gibs >= 80 then return end
 	local k = bone and rr(0.12, 0.2) or rr(0.28, 0.7)
@@ -5361,8 +5273,6 @@ local function spawnGib(pos, vel, bone)
 		av = Vector3.new(rr(-1, 1), rr(-1, 1), rr(-1, 1)) * rr(6, 16),
 	}
 end
-
--- sucking = true while the body is pulling itself back together: loose chunks get dragged into the torso
 local function stepGibs(dt, suckPos, sucking)
 	local i = 1
 	while i <= #gibs do
@@ -5394,7 +5304,7 @@ local function stepGibs(dt, suckPos, sucking)
 			if w > 1e-3 then rot = CFrame.fromAxisAngle(g.av / w, w * dt) * rot end
 			g.trail = g.trail + dt
 			if g.trail > 0.045 and not g.bone and g.vel.Magnitude > 6 then
-				g.trail = 0 -- meat leaves a blood trail while it flies
+				g.trail = 0
 				spawnDrop(pos, g.vel * 0.15 + Vector3.new(rr(-2, 2), rr(0, 3), rr(-2, 2)))
 			end
 			local gy = S.groundY + g.size.Y * 0.4
@@ -5425,9 +5335,6 @@ local function stepGibs(dt, suckPos, sucking)
 		end
 	end
 end
-
------------------------------------------------------------------- EXPOSED RIBCAGE + ORGANS
--- Everything is stored in torso-local space and follows the torso piece. -Z is the torso's front face.
 local function buildChest(parent)
 	local chest = { items = {}, shown = false }
 	local function add(size, cf, color, shape, refl)
@@ -5438,13 +5345,11 @@ local function buildChest(parent)
 		return p
 	end
 	local function bar(a, b, th)
-		local col = BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.5)) -- some ribs are soaked in blood
+		local col = BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.5))
 		local up = (math.abs((b - a).Unit.Y) > 0.9) and Vector3.xAxis or Vector3.yAxis
 		add(Vector3.new((b - a).Magnitude + 0.03, th, th),
 			CFrame.lookAt((a + b) * 0.5, b, up) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder)
 	end
-
-	-- the open wound + torn flesh around its edge
 	add(Vector3.new(1.6, 1.75, 0.12), CFrame.new(0, 0.02, -0.5), Color3.fromRGB(92, 4, 10), nil, 0.22)
 	for i = 1, 16 do
 		local ang = (i / 16) * PI * 2
@@ -5453,12 +5358,10 @@ local function buildChest(parent)
 			CFrame.new(math.cos(ang) * 0.86, 0.02 + math.sin(ang) * 0.93, -0.54) * CFrame.Angles(rr(-0.5, 0.5), rr(-0.5, 0.5), rr(0, PI)),
 			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
 	end
-
-	-- organs behind the ribs
-	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(0.43, 0.28, -0.58), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15) -- lungs
+	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(0.43, 0.28, -0.58), Color3.fromRGB(176, 74, 86), Enum.PartType.Ball, 0.15)
 	add(Vector3.new(0.62, 1.0, 0.42), CFrame.new(-0.43, 0.28, -0.58), Color3.fromRGB(160, 62, 74), Enum.PartType.Ball, 0.15)
-	add(Vector3.new(0.78, 0.4, 0.4), CFrame.new(0.3, -0.5, -0.58), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)  -- liver
-	for k = 1, 7 do -- intestines
+	add(Vector3.new(0.78, 0.4, 0.4), CFrame.new(0.3, -0.5, -0.58), Color3.fromRGB(96, 22, 24), Enum.PartType.Ball, 0.18)
+	for k = 1, 7 do
 		add(Vector3.new(0.32, 0.3, 0.3), CFrame.new(-0.55 + k * 0.18, -0.72 + math.sin(k * 1.7) * 0.08, -0.58),
 			Color3.fromRGB(206, 108, 118), Enum.PartType.Ball, 0.2)
 	end
@@ -5467,7 +5370,6 @@ local function buildChest(parent)
 	heartP.Reflectance = 0.28
 	chest.heart = { part = heartP, cf = CFrame.new(-0.22, 0.12, -0.66), size = heartP.Size }
 
-	-- ribs: six pairs bowing out of the chest and meeting at the sternum (two of them are snapped)
 	local depth = 0.24
 	for i = 1, 6 do
 		local y0 = 0.82 - (i - 1) * 0.2
@@ -5483,39 +5385,36 @@ local function buildChest(parent)
 				prev = pt
 			end
 			if tmax < 1 then
-				bar(prev, prev + Vector3.new(side * 0.05, -0.13, -0.09), th * 0.7) -- jagged broken end
+				bar(prev, prev + Vector3.new(side * 0.05, -0.13, -0.09), th * 0.7)
 			end
 		end
 	end
-	add(Vector3.new(0.16, 1.3, 0.1), CFrame.new(0, 0.3, -0.5 - depth), BONE_COL, nil)  -- sternum
+	add(Vector3.new(0.16, 1.3, 0.1), CFrame.new(0, 0.3, -0.5 - depth), BONE_COL, nil)
 	add(Vector3.new(0.1, 0.3, 0.07), CFrame.new(0, -0.45, -0.5 - depth), BONE_COL, nil)
-	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(0.72, 1.0, -0.56), 0.08)         -- collar bones
+	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(0.72, 1.0, -0.56), 0.08)
 	bar(Vector3.new(0, 0.94, -0.5 - depth), Vector3.new(-0.72, 1.0, -0.56), 0.08)
-
-	-- pelvis hanging under the torso: sacrum + coccyx, two flared iliac wings with crests, pubic arch,
-	-- ischial tuberosities, and a bone-ringed hip socket for each leg
 	local function bcol() return BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.35)) end
 	add(Vector3.new(0.5, 0.7, 0.14), CFrame.new(0, -1.08, 0.34) * CFrame.Angles(-0.3, 0, 0), bcol())
 	add(Vector3.new(0.14, 0.34, 0.1), CFrame.new(0, -1.5, 0.45) * CFrame.Angles(-0.45, 0, 0), bcol())
-	add(Vector3.new(0.14, 0.12, 0.1), CFrame.new(0, -1.3, -0.4), bcol()) -- pubic symphysis
+	add(Vector3.new(0.14, 0.12, 0.1), CFrame.new(0, -1.3, -0.4), bcol())
 	for side = -1, 1, 2 do
-		add(Vector3.new(0.08, 0.78, 0.72), CFrame.new(side * 1.04, -0.55, 0.03) * CFrame.Angles(0, side * -0.5, side * 0.28), bcol(), nil, 0.05) -- iliac blade
-		bar(Vector3.new(side * 0.9, -0.17, 0.36), Vector3.new(side * 1.18, -0.15, 0.02), 0.1)    -- crest, back half
-		bar(Vector3.new(side * 1.18, -0.15, 0.02), Vector3.new(side * 1.12, -0.2, -0.34), 0.1)   -- crest, front half
-		add(Vector3.new(0.18, 0.18, 0.18), CFrame.new(side * 1.12, -0.2, -0.34), bcol(), Enum.PartType.Ball) -- front hip spine
-		bar(Vector3.new(side * 0.3, -0.9, 0.3), Vector3.new(side * 0.9, -0.55, 0.2), 0.14)      -- sacroiliac joint
-		bar(Vector3.new(side * 0.95, -0.75, 0), Vector3.new(side * 0.55, -1.02, 0), 0.2)         -- blade down to the socket
-		bar(Vector3.new(side * 0.52, -1.05, -0.15), Vector3.new(side * 0.07, -1.3, -0.4), 0.13) -- pubic ramus
-		bar(Vector3.new(side * 0.5, -1.05, 0.12), Vector3.new(side * 0.42, -1.42, 0.22), 0.15)   -- ischium
+		add(Vector3.new(0.08, 0.78, 0.72), CFrame.new(side * 1.04, -0.55, 0.03) * CFrame.Angles(0, side * -0.5, side * 0.28), bcol(), nil, 0.05)
+		bar(Vector3.new(side * 0.9, -0.17, 0.36), Vector3.new(side * 1.18, -0.15, 0.02), 0.1)
+		bar(Vector3.new(side * 1.18, -0.15, 0.02), Vector3.new(side * 1.12, -0.2, -0.34), 0.1)
+		add(Vector3.new(0.18, 0.18, 0.18), CFrame.new(side * 1.12, -0.2, -0.34), bcol(), Enum.PartType.Ball)
+		bar(Vector3.new(side * 0.3, -0.9, 0.3), Vector3.new(side * 0.9, -0.55, 0.2), 0.14)
+		bar(Vector3.new(side * 0.95, -0.75, 0), Vector3.new(side * 0.55, -1.02, 0), 0.2)
+		bar(Vector3.new(side * 0.52, -1.05, -0.15), Vector3.new(side * 0.07, -1.3, -0.4), 0.13)
+		bar(Vector3.new(side * 0.5, -1.05, 0.12), Vector3.new(side * 0.42, -1.42, 0.22), 0.15)
 		add(Vector3.new(0.2, 0.2, 0.2), CFrame.new(side * 0.42, -1.44, 0.22), bcol(), Enum.PartType.Ball)
-		for k = 1, 8 do -- hip socket rim + dark cup
+		for k = 1, 8 do
 			local ang = k / 8 * PI * 2
 			add(Vector3.new(0.15, 0.1, 0.15),
 				CFrame.new(side * 0.5 + math.cos(ang) * 0.3, -1.02, math.sin(ang) * 0.3) * CFrame.Angles(rr(-0.3, 0.3), ang, rr(-0.3, 0.3)), bcol())
 		end
 		add(Vector3.new(0.05, 0.5, 0.5), CFrame.new(side * 0.5, -1.0, 0) * CFrame.Angles(0, 0, PI / 2), Color3.fromRGB(92, 4, 10), Enum.PartType.Cylinder, 0.2)
 	end
-	for _ = 1, 10 do -- torn flesh hanging off the pelvis
+	for _ = 1, 10 do
 		local sz = rr(0.16, 0.34)
 		add(Vector3.new(sz, sz * rr(0.5, 1), sz),
 			CFrame.new(rr(-1, 1), rr(-1.4, -1.0), rr(-0.35, 0.35)) * CFrame.Angles(rr(-0.5, 0.5), rr(0, PI), rr(-0.5, 0.5)),
@@ -5523,13 +5422,11 @@ local function buildChest(parent)
 	end
 	return chest
 end
-
 local function showChest(chest, on)
 	for _, it in ipairs(chest.items) do it.part.Transparency = on and 0 or 1 end
 	if chest.heart then chest.heart.part.Transparency = on and 0 or 1 end
 	chest.shown = on
 end
-
 local function updateChest(chest, torsoCF, beat)
 	if not chest.shown then return end
 	for _, it in ipairs(chest.items) do
@@ -5537,13 +5434,11 @@ local function updateChest(chest, torsoCF, beat)
 	end
 	local h = chest.heart
 	if h then
-		h.part.Size = h.size * (1 + 0.28 * math.min(beat, 1.2)) -- the heart is visibly beating
+		h.part.Size = h.size * (1 + 0.28 * math.min(beat, 1.2))
 		h.part.CFrame = torsoCF * h.cf
 	end
 end
 
--- Exposed arm bones: the front of the arm is torn open, humerus + radius + ulna show through and the
--- forearm bones snap out past the wrist. Stored in arm-local space (arm is 1x2x1, -Z = front).
 local function buildArmBones(parent, k)
 	k = k or 1
 	local arm = { items = {}, shown = false }
@@ -5563,8 +5458,6 @@ local function buildArmBones(parent, k)
 	local function knob(pos, d)
 		add(Vector3.new(d * k, d * k, d * k), CFrame.new(pos), BONE_COL:Lerp(CFG.BloodColor, rr(0, 0.35)), Enum.PartType.Ball)
 	end
-
-	-- torn-open strip down the front of the arm + ragged flesh around it
 	add(Vector3.new(0.62, 1.75, 0.08), CFrame.new(0, 0, -0.52), Color3.fromRGB(92, 4, 10), nil, 0.22)
 	for i = 1, 12 do
 		local side = (i % 2 == 0) and 1 or -1
@@ -5574,21 +5467,16 @@ local function buildArmBones(parent, k)
 			CFrame.new(side * rr(0.28, 0.36), y, -0.55) * CFrame.Angles(rr(-0.5, 0.5), rr(-0.5, 0.5), rr(0, PI)),
 			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
 	end
-
-	-- humerus (upper arm) with a joint knob at the shoulder end and at the elbow
 	bone(Vector3.new(0.02, 0.92, -0.6), Vector3.new(0.04, 0.0, -0.62), 0.17)
 	knob(Vector3.new(0.02, 0.95, -0.6), 0.27)
 	knob(Vector3.new(0.04, -0.02, -0.62), 0.25)
-	-- radius + ulna (forearm); the radius sticks out past the wrist, the ulna is snapped short
 	bone(Vector3.new(-0.1, -0.06, -0.6), Vector3.new(-0.13, -1.3, -0.62), 0.12)
 	bone(Vector3.new(0.12, -0.06, -0.6), Vector3.new(0.15, -0.78, -0.62), 0.11)
-	bone(Vector3.new(0.15, -0.78, -0.62), Vector3.new(0.2, -0.94, -0.66), 0.07)  -- jagged broken end
+	bone(Vector3.new(0.15, -0.78, -0.62), Vector3.new(0.2, -0.94, -0.66), 0.07)
 	bone(Vector3.new(-0.13, -1.3, -0.62), Vector3.new(-0.1, -1.4, -0.66), 0.06)
 	return arm
 end
 
--- Broken neck: a stack of vertebrae with the spinal cord, windpipe and gullet hanging out of a torn flesh ring.
--- sign = +1 builds it upward out of the torso's neck hole, -1 builds it downward out of the head's cut.
 local function buildNeckBones(parent, sign, baseY, count)
 	local neck = { items = {}, shown = false }
 	local function add(size, cf, color, shape, refl)
@@ -5603,8 +5491,6 @@ local function buildNeckBones(parent, sign, baseY, count)
 		add(Vector3.new((b - a).Magnitude + 0.02, th, th),
 			CFrame.lookAt((a + b) * 0.5, b, up) * CFrame.Angles(0, PI / 2, 0), col, Enum.PartType.Cylinder, 0.15)
 	end
-
-	-- ragged flesh ring where the neck was torn
 	for i = 1, 9 do
 		local ang = i / 9 * PI * 2
 		local sz = rr(0.2, 0.4)
@@ -5612,8 +5498,6 @@ local function buildNeckBones(parent, sign, baseY, count)
 			CFrame.new(math.cos(ang) * 0.46, baseY + sign * 0.05, math.sin(ang) * 0.34) * CFrame.Angles(rr(-0.5, 0.5), rr(0, PI), rr(-0.5, 0.5)),
 			FLESH[rng:NextInteger(1, #FLESH)], nil, 0.12)
 	end
-
-	-- vertebrae: disc body + side wings + the spike at the back; each one slightly crooked
 	for i = 0, count - 1 do
 		local y = baseY + sign * (0.14 + i * 0.2)
 		local tilt = rr(-0.22, 0.22)
@@ -5624,18 +5508,15 @@ local function buildNeckBones(parent, sign, baseY, count)
 		add(Vector3.new(0.62, 0.07, 0.1), base * CFrame.new(0, 0, 0.05), col)
 		add(Vector3.new(0.08, 0.1, 0.3), base * CFrame.new(0, 0, 0.26), col)
 	end
-
 	local topY = baseY + sign * (0.14 + (count - 1) * 0.2 + 0.2)
-	tube(Vector3.new(0, baseY + sign * 0.1, 0.12), Vector3.new(0.12, topY + sign * 0.45, 0.06), 0.07, Color3.fromRGB(232, 214, 168)) -- spinal cord
-	tube(Vector3.new(0, baseY + sign * 0.02, -0.14), Vector3.new(0.03, topY + sign * 0.1, -0.2), 0.17, Color3.fromRGB(212, 120, 128)) -- windpipe
-	tube(Vector3.new(0.09, baseY + sign * 0.02, -0.02), Vector3.new(0.14, topY + sign * 0.28, -0.06), 0.1, Color3.fromRGB(150, 30, 40)) -- gullet
+	tube(Vector3.new(0, baseY + sign * 0.1, 0.12), Vector3.new(0.12, topY + sign * 0.45, 0.06), 0.07, Color3.fromRGB(232, 214, 168))
+	tube(Vector3.new(0, baseY + sign * 0.02, -0.14), Vector3.new(0.03, topY + sign * 0.1, -0.2), 0.17, Color3.fromRGB(212, 120, 128))
+	tube(Vector3.new(0.09, baseY + sign * 0.02, -0.02), Vector3.new(0.14, topY + sign * 0.28, -0.06), 0.1, Color3.fromRGB(150, 30, 40))
 	return neck
 end
-
------------------------------------------------------------------- SFX
 local SFX_URL  = "https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/copy_0D6F82B8-FA45-4138-AFB3-946603E493BB.mp3"
 local SFX_FILE = "RickPrimeRegen_slam.mp3"
-local SLAM_VOLUME = 3.2    -- plays once, when the body parts first start slamming back together
+local SLAM_VOLUME = 3.2
 local SLAM_TAG = "RickRegen_SlamSFX"
 local EXTRA_SFX = { id = "rbxassetid://126881993357924", volume = 1.25 }
 local EXPLODE_TAG = "RickRegen_ExplodeSFX"
@@ -5648,25 +5529,18 @@ local EXPLODE_SFX = {
 	{ name = "Audio/fleshimpact2",    id = "rbxassetid://11714811219",     volume = 1 },
 	{ name = "Audio/fleshimpact",     id = "rbxassetid://11714811320",     volume = 1 },
 }
-
--- Tagged one-shot sound: the start sound carries a fixed name, so a new sequence (or a second copy
--- of this script) can wipe whatever is left from an earlier one instead of layering on top of it.
 local START_TAG = "RickRegen_StartSFX"
-
--- All of these fire at the same moment, when the accessories get their white highlight (the final slam),
--- and again at the very start of the sequence.
 local FINALE_TAG = "RickRegen_FinaleSFX"
-local FINALE_ANIMATION_ID = "rbxassetid://134775406437626"  -- plays the instant all the parts have slammed together
-local FINALE_ANIMATION_SPEED = 0.6  -- playback speed of that animation (1 = normal)
-local FINALE_ANIMATION_START = 0.2  -- seconds into the animation it starts from (TimePosition)
-local OPEN_TAG   = "RickRegen_OpenSFX"   -- the same four sounds also play when the sequence begins
+local FINALE_ANIMATION_ID = "rbxassetid://134775406437626"
+local FINALE_ANIMATION_SPEED = 0.6
+local FINALE_ANIMATION_START = 0.2
+local OPEN_TAG   = "RickRegen_OpenSFX"
 local FINALE_SFX = {
 	{ name = "Audio/lethal slam",       id = "rbxassetid://14798925836", volume = 1 },
 	{ name = "Tablet Woosh",            id = "rbxassetid://5530025800",  volume = 1 },
 	{ name = "Audio/new ult test 2",    id = "rbxassetid://14762034452", volume = 1 },
 	{ name = "Audio/bulletpunch2",      id = "rbxassetid://12376311020", volume = 1 },
 }
-
 local function clearRegenSounds()
 	for _, inst in ipairs(workspace:GetChildren()) do
 		if inst:IsA("Sound") and inst.Name == START_TAG then
@@ -5675,7 +5549,6 @@ local function clearRegenSounds()
 		end
 	end
 end
-
 local function clearSlamSound()
 	for _, inst in ipairs(workspace:GetChildren()) do
 		if inst:IsA("Sound") and (inst.Name == SLAM_TAG or inst.Name == OPEN_TAG) then
@@ -5684,7 +5557,6 @@ local function clearSlamSound()
 		end
 	end
 end
-
 local function playTagged(tag, cfg)
 	local snd = Instance.new("Sound")
 	snd.Name = tag
@@ -5693,10 +5565,8 @@ local function playTagged(tag, cfg)
 	snd.Parent = workspace
 	snd.Ended:Connect(function() snd:Destroy() end)
 	snd:Play()
-	task.delay(20, function() if snd.Parent then snd:Destroy() end end) -- failsafe so a stuck sound can't linger
+	task.delay(20, function() if snd.Parent then snd:Destroy() end end)
 end
-
--- fetched once at load so it plays instantly when the parts start slamming together
 task.spawn(function()
 	local ok, id = pcall(function()
 		if not (isfile and isfile(SFX_FILE)) then
@@ -5710,9 +5580,6 @@ task.spawn(function()
 		warn("[RickRegen] slam sound failed: " .. tostring(id))
 	end
 end)
-
------------------------------------------------------------------- HIDING A RESPAWNED BODY
--- hides every part/decal of a model (including ones added later) and remembers the original transparency
 local function hideModel(model, rec)
 	local function hide(d)
 		if (d:IsA("BasePart") or d:IsA("Decal")) and rec[d] == nil then
@@ -5730,13 +5597,9 @@ local function unhide(rec, conn)
 		if inst.Parent then inst.Transparency = tr end
 	end
 end
-
------------------------------------------------------------------- MAIN
--- play()					-> old behaviour: explode + regenerate the (alive) character
--- play(true, deadCharacter) -> you just died: explode now, leave a corpse, regenerate after you respawn
 local function play(deathMode, deadChar)
 	if deathMode and (S.Fired or workspace:FindFirstChild("RickRegenFX")) then return end
-	if deathMode and S.abort then pcall(S.abort) end -- a fresh death replaces whatever is still playing
+	if deathMode and S.abort then pcall(S.abort) end
 	if S.running then return end
 	local char = deadChar or lp.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -5755,7 +5618,6 @@ local function play(deathMode, deadChar)
 	end
 	local cam = workspace.CurrentCamera
 	if not cam then return end
-
 	S.running = true
 	if deathMode then S.Fired = true end
 	S.RegenSoundPlayed = false
@@ -5765,12 +5627,10 @@ local function play(deathMode, deadChar)
 	table.clear(fx)
 	table.clear(drops)
 	table.clear(gibs)
-
 	local folder = Instance.new("Folder")
 	folder.Name = "RickRegenFX"
 	folder.Parent = workspace
 	S.folder = folder
-
 	local rp = RaycastParams.new()
 	rp.FilterType = Enum.RaycastFilterType.Exclude
 	rp.FilterDescendantsInstances = { char, folder }
@@ -5779,7 +5639,6 @@ local function play(deathMode, deadChar)
 	local gHit = workspace:Raycast(hrp.Position, Vector3.new(0, -30, 0), rp)
 	S.groundY = gHit and gHit.Position.Y or (hrp.Position.Y - 3)
 
-	-- fake body ------------------------------------------------
 	char.Archivable = true
 	local clone = char:Clone()
 	if not clone then
@@ -5814,8 +5673,6 @@ local function play(deathMode, deadChar)
 	end
 	clone.Name = "RickRegenBody"
 	clone.Parent = folder
-
-	-- pieces ---------------------------------------------------
 	local pieces, limbs, stumps, sockets, veins = {}, {}, {}, {}, {}
 	local torsoP
 	for _, spec in ipairs(SPEC) do
@@ -5872,9 +5729,8 @@ local function play(deathMode, deadChar)
 		end
 		for _, v in ipairs(p.veins) do veins[#veins + 1] = v end
 	end
-
 	local chest = buildChest(folder)
-	local armBones = {} -- every limb's exposed bones, keyed by piece (arms, legs, and the neck stub on the head)
+	local armBones = {}
 	for _, ap in ipairs(limbs) do
 		if ap.name == "Right Arm" or ap.name == "Left Arm" then
 			armBones[ap] = buildArmBones(folder, 1)
@@ -5886,7 +5742,6 @@ local function play(deathMode, deadChar)
 	end
 	local torsoNeck = buildNeckBones(folder, 1, 1.0, 5)
 
-	-- hide + freeze the real character -------------------------
 	local hidden, hideConn = {}, nil
 	local saved = { ws = 16, jp = 50, jh = 7.2, auto = true, anch = false }
 	local function freezeChar()
@@ -5901,7 +5756,6 @@ local function play(deathMode, deadChar)
 		hrp.Anchored = true
 	end
 	if deathMode then
-		-- the body that just died only gets hidden (the fake body does the exploding); the next body replaces it
 		for _, d in ipairs(char:GetDescendants()) do
 			if d:IsA("BasePart") or d:IsA("Decal") then d.Transparency = 1 end
 		end
@@ -5915,8 +5769,6 @@ local function play(deathMode, deadChar)
 		saved.anch = hrp.Anchored
 		freezeChar()
 	end
-
-	-- screen + body glow ---------------------------------------
 	local cc = Instance.new("ColorCorrectionEffect")
 	cc.Name = "RickRegenCC"
 	cc.Parent = Lighting
@@ -5938,16 +5790,13 @@ local function play(deathMode, deadChar)
 	light.Brightness = 0
 	light.Shadows = false
 	light.Parent = torsoP.fake
-
-	-- run state ------------------------------------------------
 	local baseFov = cam.FieldOfView
 	local clock, realSince = CFG.T_Burst, 0
-	local rawClock, HOLD_T = CFG.T_Burst, CFG.T_Regrow - 0.05 -- the corpse waits at HOLD_T until you've respawned
+	local rawClock, HOLD_T = CFG.T_Burst, CFG.T_Regrow - 0.05
 	local burstDone, finished, restored = false, false, false
 	local pre, heat, beat, redAmt = 0, 0, 0, 0
 	local bindName = "RickRegen_" .. tostring(os.clock())
 	local poolT, chestAcc, suckGibs = 0, 0, false
-
 	local function restoreChar()
 		if restored then return end
 		restored = true
@@ -5966,7 +5815,6 @@ local function play(deathMode, deadChar)
 			hum.AutoRotate = saved.auto
 		end
 	end
-
 	local function fullCleanup()
 		pcall(function() RunService:UnbindFromRenderStep(bindName) end)
 		if clone.Parent then clone:Destroy() end
@@ -5982,14 +5830,12 @@ local function play(deathMode, deadChar)
 		S.abort = nil
 		S.running = false
 	end
-
 	local function abort()
 		clearRegenSounds()
 		clearSlamSound()
 		restoreChar()
 		fullCleanup()
 	end
-
 	local function doBurst()
 		S.flash, S.trauma, S.fov = 1, 1, 16
 		for _, cfg in ipairs(EXPLODE_SFX) do
@@ -6015,7 +5861,6 @@ local function play(deathMode, deadChar)
 				spawnDrop(base.Position, n * rr(16, 44) + Vector3.new(rr(-10, 10), rr(0, 14), rr(-10, 10)))
 			end
 		end
-		-- chest blown open: ribcage + organs revealed, meat and bone fly out
 		showChest(chest, true)
 		updateChest(chest, torsoP.disp, 0)
 		for ap, ab in pairs(armBones) do
@@ -6047,7 +5892,6 @@ local function play(deathMode, deadChar)
 			setMode(v, (v.kind == "L") and "tether" or "dangle", clock)
 		end
 	end
-
 	local slamPlayed = false
 	local function startPull(p)
 		if not slamPlayed then
@@ -6066,7 +5910,6 @@ local function play(deathMode, deadChar)
 			if v.mode ~= "attached" then setMode(v, "attached", clock) end
 		end
 	end
-
 	local function onSnap(p)
 		local pos = (p.real.CFrame * p.spec.stump).Position
 		glowBall(pos, Color3.fromRGB(255, 70, 70), 4.5, 0.26)
@@ -6090,7 +5933,6 @@ local function play(deathMode, deadChar)
 		S.flash = math.max(S.flash, 0.4)
 		S.fov = S.fov + 3.5
 	end
-
 	local function finale()
 		S.flash, S.trauma = 1, 1
 		S.fov = S.fov + 12
@@ -6100,7 +5942,6 @@ local function play(deathMode, deadChar)
 			local sp = rr(8, 32)
 			spawnDrop(c, Vector3.new(math.cos(a) * sp, rr(6, 28), math.sin(a) * sp))
 		end
-		-- the chest seals up: ribcage and organs burst out as the flesh closes over them
 		suckGibs = false
 		showChest(chest, false)
 		for k = 1, 18 do
@@ -6109,23 +5950,21 @@ local function play(deathMode, deadChar)
 			spawnGib(c, Vector3.new(math.cos(a) * sp, rr(8, 20), math.sin(a) * sp), k > 10)
 		end
 		restoreChar()
-		pcall(function() -- your body is back: play the finish animation right now, slowed down
+		pcall(function()
 			local track = playCharacterAnimation(char, FINALE_ANIMATION_ID)
 			if track then
 				track.TimePosition = FINALE_ANIMATION_START
 				track:AdjustSpeed(FINALE_ANIMATION_SPEED)
 			end
 		end)
-		rickSay() -- Rick Prime dialogue, the instant every part has slammed together
-		clearRegenSounds() -- accessories are visible again: stop the start sound
-		-- layered finale sounds, all started together (leftovers from an earlier run get wiped first)
+		rickSay()
+		clearRegenSounds()
 		for _, inst in ipairs(workspace:GetChildren()) do
 			if inst:IsA("Sound") and inst.Name == FINALE_TAG then inst:Destroy() end
 		end
 		for _, cfg in ipairs(FINALE_SFX) do
 			playTagged(FINALE_TAG, cfg)
 		end
-		-- accessories come back with a white occluded highlight that fades out
 		for _, acc in ipairs(char:GetChildren()) do
 			if acc:IsA("Accessory") then
 				local h = Instance.new("Highlight")
@@ -6141,7 +5980,6 @@ local function play(deathMode, deadChar)
 				tw:Play()
 			end
 		end
-		-- fake body goes invisible (kept alive so the last mist bursts can finish)
 		for _, d in ipairs(clone:GetDescendants()) do
 			if d:IsA("BasePart") or d:IsA("Decal") then d.Transparency = 1 end
 		end
@@ -6152,29 +5990,23 @@ local function play(deathMode, deadChar)
 		finished = true
 		S.corpse = nil
 	end
-
 	local function noise3(t, seed)
 		return Vector3.new(math.noise(t, seed, 0.5), math.noise(seed, t, 0.5), math.noise(0.5, t, seed))
 	end
-
 	local function step(dt)
 		dt = math.min(dt, 1 / 15)
 		local corpse = S.corpse
 		if corpse and not corpse.bound then
-			-- corpse phase: you haven't respawned yet, the explosion just plays out
 		elseif not (hrp.Parent and hum.Parent) or hum.Health <= 0 then
 			abort()
 			return
 		end
-		-- the new body stays parked on the spot where you died until the regeneration is done
 		if corpse and corpse.bound and not restored and hrp.Parent then
 			hrp.CFrame = corpse.deathCF
 		end
 		local c = workspace.CurrentCamera
 		local sdt = dt
-
 		if not finished then
-			-- time (hitstop -> slowmo ramp after the burst)
 			local ts = 1
 			if burstDone then
 				realSince = realSince + dt
@@ -6188,9 +6020,8 @@ local function play(deathMode, deadChar)
 			clock = clock + sdt
 			rawClock = rawClock + sdt
 			if S.corpse and S.corpse.holding and clock > HOLD_T then
-				clock = HOLD_T -- freeze the timeline right before the veins regrow until the respawn releases it
+				clock = HOLD_T
 			end
-
 			if not burstDone and clock >= CFG.T_Burst then
 				burstDone = true
 				realSince = 0
@@ -6201,8 +6032,6 @@ local function play(deathMode, deadChar)
 			local bpm = burstDone and lerp(72, 175, heat) or lerp(70, 140, pre)
 			S.beatPhase = S.beatPhase + sdt * bpm / 60
 			beat = heartbeat(S.beatPhase)
-
-			-- triggers
 			if burstDone then
 				if not S.RegenSoundPlayed and clock >= CFG.T_Regrow then
 					S.RegenSoundPlayed = true
@@ -6228,8 +6057,6 @@ local function play(deathMode, deadChar)
 					end
 				end
 			end
-
-			-- pieces
 			for _, p in ipairs(pieces) do
 				local st = p.state
 				if st == "intact" then
@@ -6280,12 +6107,9 @@ local function play(deathMode, deadChar)
 					follower.part.CFrame = armPiece.fake.CFrame * follower.offset
 				end
 			end
-
 			updateChest(chest, torsoP.disp, beat)
 			for ap, ab in pairs(armBones) do updateChest(ab, ap.disp, 0) end
 			updateChest(torsoNeck, torsoP.disp, 0)
-
-			-- stumps (cut faces, mist, droplet spray)
 			if burstDone then
 				local spray = math.exp(-(rawClock - CFG.T_Burst) * 1.35)
 				for _, s in ipairs(stumps) do
@@ -6300,7 +6124,6 @@ local function play(deathMode, deadChar)
 							spawnDrop(base.Position + n * 0.2,
 								n * rr(10, 26) + Vector3.new(rr(-6, 6), rr(0, 8), rr(-6, 6)))
 						end
-						-- thick drips keep running long after the spray has died down
 						s.drip = (s.drip or 0) + sdt * 5
 						while s.drip >= 1 do
 							s.drip = s.drip - 1
@@ -6310,7 +6133,6 @@ local function play(deathMode, deadChar)
 						end
 					end
 				end
-				-- blood pools under the torso while it lies there, and the open chest keeps bleeding
 				poolT = poolT - sdt
 				if poolT <= 0 and (torsoP.state == "phys" or torsoP.state == "rest") then
 					poolT = 0.22
@@ -6325,15 +6147,10 @@ local function play(deathMode, deadChar)
 					end
 				end
 			end
-
 			for _, v in ipairs(veins) do updateVein(v, sdt, clock, heat, beat) end
-
-			-- body glow
 			local hlAmt = burstDone and (0.1 + 0.28 * heat + 0.3 * beat * (0.4 + heat)) or (0.6 * pre * (0.6 + 0.4 * beat))
 			hl.FillTransparency = 1 - clamp01(hlAmt) * 0.6
 			light.Brightness = redAmt * (0.3 + beat * 2.2) * 2
-
-			-- everyone home?
 			local allHome = true
 			for _, p in ipairs(limbs) do
 				if p.state ~= "home" then allHome = false end
@@ -6341,7 +6158,6 @@ local function play(deathMode, deadChar)
 			if allHome then finale() end
 		end
 
-		-- screen + camera ---------------------------------------
 		S.trauma = math.max(0, S.trauma - dt * 1.5)
 		S.flash = math.max(0, S.flash - dt * 3.0)
 		S.fov = S.fov * math.exp(-dt * 6)
@@ -6350,7 +6166,6 @@ local function play(deathMode, deadChar)
 		else
 			S.zoom = S.zoom * math.exp(-dt * 7)
 		end
-
 		local redTarget = 0
 		if not finished then
 			redTarget = burstDone and (0.28 + 0.5 * heat) or (0.75 * pre)
@@ -6362,7 +6177,6 @@ local function play(deathMode, deadChar)
 		cc.Saturation = -0.12 * pr
 		cc.TintColor = Color3.new(1, 1 - 0.32 * pr, 1 - 0.38 * pr)
 		blur.Size = S.flash * 15
-
 		if c then
 			local sh = S.trauma * S.trauma
 			if sh > 1e-4 then
@@ -6373,23 +6187,17 @@ local function play(deathMode, deadChar)
 			end
 			c.FieldOfView = baseFov + S.zoom + S.fov
 		end
-
 		stepDrops(sdt)
 		stepGibs(sdt, torsoP.real.Position, suckGibs)
 		runFx(sdt)
-
 		if finished and #fx == 0 and #drops == 0 and #gibs == 0 and S.flash < 0.02 and S.trauma < 0.02 and redAmt < 0.02 then
 			fullCleanup()
 		end
 	end
-
 	S.abort = abort
-
 	if deathMode then
 		local corpse = { deathCF = hrp.CFrame, holding = true, bound = false }
 		S.corpse = corpse
-
-		-- called when the next body spawns: hide it, park it on the corpse and aim the pieces at it
 		function corpse.bind(newChar, rec, conn)
 			if S.corpse ~= corpse then return false end
 			local nHum = newChar:WaitForChild("Humanoid", 5)
@@ -6412,21 +6220,17 @@ local function play(deathMode, deadChar)
 			corpse.bound = true
 			return true
 		end
-
-		-- SpawnDelay after the respawn: the corpse starts regenerating
 		function corpse.release()
 			if S.corpse ~= corpse or not corpse.bound then return end
 			freezeChar()
 			corpse.holding = false
 		end
 	end
-
 	clearRegenSounds()
 	clearSlamSound()
 	for _, cfg in ipairs(FINALE_SFX) do
 		playTagged(OPEN_TAG, cfg)
 	end
-
 	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Camera.Value + 1, function(dt)
 		local ok, err = pcall(step, dt)
 		if not ok then
@@ -6435,11 +6239,8 @@ local function play(deathMode, deadChar)
 		end
 	end)
 end
-
------------------------------------------------------------------- INPUT
 if CFG.AutoPlay then
-	-- you die	 -> the fake body explodes right there and the pieces lie around as a corpse
-	-- you respawn -> the new body is hidden + parked on the corpse; SpawnDelay later the corpse regenerates into it
+
 	local function bindDeath(char)
 		local hum = char:WaitForChild("Humanoid", 10)
 		if not hum then return end
@@ -6455,12 +6256,9 @@ if CFG.AutoPlay then
 			end
 		end)
 	end
-
 	local function onSpawn(char)
 		local spawnTime = os.clock()
 		S.Fired = false
-
-		-- a corpse is waiting: hide the new body this very frame so it blends into the splatter
 		local session = S.corpse
 		local rec, hideConn
 		if session then
@@ -6468,7 +6266,6 @@ if CFG.AutoPlay then
 			hideConn = hideModel(char, rec)
 		end
 
-		-- the hide above stays instant (otherwise you'd see your new body); everything else waits for the morph
 		task.delay(MORPH_DELAY, function()
 			if char.Parent then bindDeath(char) end
 		end)
@@ -6476,7 +6273,6 @@ if CFG.AutoPlay then
 		char:WaitForChild("HumanoidRootPart", 10)
 		local morphLeft = MORPH_DELAY - (os.clock() - spawnTime)
 		if morphLeft > 0 then task.wait(morphLeft) end
-
 		local bound = false
 		if session then
 			if S.corpse == session and lp.Character == char then
@@ -6484,7 +6280,6 @@ if CFG.AutoPlay then
 				bound = okBind and res == true
 			end
 			if not bound then
-				-- couldn't hook the corpse up to this body: drop it and fall back to a normal respawn
 				unhide(rec, hideConn)
 				if S.corpse == session and S.abort then pcall(S.abort) end
 			end
@@ -6497,18 +6292,14 @@ if CFG.AutoPlay then
 		conn:Disconnect()
 		local remaining = CFG.SpawnDelay - (os.clock() - spawnTime)
 		if remaining > 0 then task.wait(remaining) end
-
 		if bound then
 			if S.corpse == session and lp.Character == char then
 				session.release()
 			end
 			return
 		end
-
-		-- no corpse (e.g. the script was started while dead): old behaviour, explode + regenerate after the delay
 		while S.running and os.clock() - t0 < 8 do task.wait() end
 		if lp.Character == char then
-			-- if setup ever errors halfway, don't leave the sequence marked "running" (that would block every later respawn)
 			local ok, err = pcall(play)
 			if not ok then
 				warn("[RickRegen] " .. tostring(err))
@@ -6516,7 +6307,6 @@ if CFG.AutoPlay then
 			end
 		end
 	end
-
 	if _G.__RickRegenSpawnConn then
 		pcall(function() _G.__RickRegenSpawnConn:Disconnect() end)
 	end
@@ -6527,10 +6317,8 @@ if CFG.AutoPlay then
 		task.spawn(bindDeath, lp.Character)
 	end
 end
-
 return { Play = play, HasCorpse = function() return S.corpse ~= nil end }
 end)()
-
 _G.RickPortal = {
     Open = openPortal,
     SetDodge = function(enabled)
@@ -6618,10 +6406,7 @@ _G.RickPortal = {
         _G.RickPortal = nil
     end,
 }
-
 print("[RickPortal] loaded - press the Portal button or run _G.RickPortal.Open()")
-
--- spawns the model at a fixed spot (wrapped so a failed asset load can't throw an error)
 pcall(function()
     P = game:GetObjects("rbxassetid://10807694957")[1]
     P.Parent = workspace
