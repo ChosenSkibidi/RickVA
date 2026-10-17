@@ -20,6 +20,7 @@ local GUN_SCALE = 0.6
 
 local TRIGGER_ANIM_IDS = {
 	ATTACK = "10468665991",
+	ATTACK3 = "10471336737",
 }
 local DUMMY_FOLDER_NAME = "Live" -- workspace.Live
 local DUMMY_NAME = "Weakest Dummy" -- workspace.Live["Weakest Dummy"], counts as a target when it's the closest
@@ -1916,8 +1917,1046 @@ local function runSequence(character, onFinished)
 	task.delay(BEAM_DELAY + 2, finishSequence)
 end
 
+-- ===== ATTACK 3 (kick): electric blue wind-up + impact =====
+-- The trigger animation is cut, the kick animation plays from ATTACK3_START_TIME, the foot lands ATTACK3_WINDUP later.
+local ATTACK3_ANIM_ID = "rbxassetid://85025226664507"
+local ATTACK3_START_TIME = 1.3
+local ATTACK3_WINDUP = 0.3
+local ATTACK3_TOTAL = 1.4 -- lifetime of the effect layer
+local ATTACK3_SLASH_LENGTH = 55 -- how far the forward lightning slash reaches (studs)
+local SMOKE_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
+local ATTACK3_SOUNDS = { charge = "", impact = "" } -- optional rbxassetid://... (empty = silent)
+
+local ELEC = {
+	white = Color3.fromRGB(240, 252, 255),
+	cyan = Color3.fromRGB(110, 225, 255),
+	blue = Color3.fromRGB(30, 140, 255),
+	deep = Color3.fromRGB(8, 40, 200),
+}
+local ELEC_SEQ = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, ELEC.white),
+	ColorSequenceKeypoint.new(0.3, ELEC.cyan),
+	ColorSequenceKeypoint.new(0.7, ELEC.blue),
+	ColorSequenceKeypoint.new(1, ELEC.deep),
+})
+
+-- jagged lightning bolt built from thin neon segments (cyan body, white core), fades by itself
+local function elecBolt(parent, p0, p1, thickness, life, segments, jag, flat, dim)
+	local delta = p1 - p0
+	if delta.Magnitude < 0.1 then
+		return
+	end
+	local frame = FX.facing(p0, delta)
+	local points = { p0 }
+	for index = 1, segments - 1 do
+		local alpha = index / segments
+		local spread = jag * math.sin(math.pi * alpha)
+		local offset = frame.RightVector * FX.rng:NextNumber(-1, 1) * spread
+			+ frame.UpVector * FX.rng:NextNumber(-1, 1) * spread * (flat and 0.15 or 1)
+		points[#points + 1] = p0 + delta * alpha + offset
+	end
+	points[#points + 1] = p1
+	for index = 1, #points - 1 do
+		local a, b = points[index], points[index + 1]
+		local length = (b - a).Magnitude
+		if length > 0.01 then
+			local cframe = FX.facing((a + b) / 2, b - a)
+			local body = FX.part(parent, Enum.PartType.Block, dim and ELEC.blue or ELEC.cyan, dim and 0.45 or 0.05, Vector3.new(thickness, thickness, length + thickness * 0.6), cframe)
+			local core = FX.part(parent, Enum.PartType.Block, dim and ELEC.cyan or ELEC.white, dim and 0.3 or 0, Vector3.new(thickness * 0.4, thickness * 0.4, length + thickness * 0.6), cframe)
+			FX.tween(body, life, { Transparency = 1, Size = Vector3.new(thickness * 0.2, thickness * 0.2, length) })
+			FX.tween(core, life * 0.8, { Transparency = 1 })
+			task.delay(life + 0.05, function()
+				body:Destroy()
+				core:Destroy()
+			end)
+		end
+	end
+end
+
+local function legTip(leg)
+	return leg.part.CFrame * Vector3.new(0, -leg.part.Size.Y / 2, 0)
+end
+
+-- the kicking leg is the one that's furthest from its standing pose (small bias so it doesn't flicker between legs)
+local function pickKickLeg(legs, root, current)
+	local best, bestScore = current, -1
+	for _, leg in ipairs(legs) do
+		if leg.part then
+			local score = (legTip(leg) - root.CFrame * leg.rest).Magnitude + (leg == current and 0.4 or 0)
+			if score > bestScore then
+				best, bestScore = leg, score
+			end
+		end
+	end
+	return best
+end
+
+-- ===== ATTACK 3: hitbox -> dodge -> "1" combo =====
+local ATTACK3_HITBOX_SIZE = Vector3.new(8, 8, 8)
+local ATTACK3_HITBOX_OFFSET = CFrame.new(0, 0, -0.5) -- relative to your HumanoidRootPart (negative Z = in front of you): 0.5 studs in front of you
+local ATTACK3_HITBOX_VISIBLE = false -- true = draw the hitbox (debug)
+local ATTACK3_HITBOX_TOUCH_PADDING = 1 -- studs added around the hitbox when testing a target's root (about half a HumanoidRootPart)
+local ATTACK3_HITBOX_LIFETIME = 0.1 -- seconds the hitbox lives after the startup begins (the kick lands ~0.3s in): if nobody touched it by then, it's a miss
+local ATTACK3_POST_IMPACT_DELAY = 0.78 -- extra seconds to wait AFTER the impact before the dodge fires
+local DODGE_BEHIND_DISTANCE = 3 -- studs behind the target's back (hit follow-up teleport)
+local ATTACK3_FOLLOW_BEHIND_DISTANCE = -3 -- the miss teleport/follow: same sign convention as attack 1's BEHIND_DISTANCE (-5), but attack 3 only, so attack 1 is untouched
+local KEYPRESS_HOLD_TIME = 0.05
+local KEY_ONE = 0x31 -- virtual key code of the "1" key (top row)
+
+-- finds the HumanoidRootPart of whoever owns `part` (any live humanoid that isn't you / your clone)
+-- Every target, found the SAME way attack 1's getClosestTargetRoot finds them (copied from it): other live players + workspace.Live["Weakest Dummy"].
+-- No spatial query on purpose: GetPartsInPart skips parts with CanQuery off, which is how the dummy used to get ignored.
+local function getAllTargetRoots()
+	local targetRoots = {}
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		local otherCharacter = otherPlayer ~= localPlayer and otherPlayer.Character
+		local otherRoot = otherCharacter and otherCharacter:FindFirstChild("HumanoidRootPart")
+		local otherHumanoid = otherCharacter and otherCharacter:FindFirstChildOfClass("Humanoid")
+		if otherRoot and otherHumanoid and otherHumanoid.Health > 0 then
+			table.insert(targetRoots, otherRoot)
+		end
+	end
+
+	-- workspace.Live["Weakest Dummy"] competes with the players
+	local liveFolder = workspace:FindFirstChild(DUMMY_FOLDER_NAME)
+	local dummy = liveFolder and liveFolder:FindFirstChild(DUMMY_NAME)
+	if dummy then
+		local dummyRoot = dummy:FindFirstChild("HumanoidRootPart") or (dummy:IsA("Model") and dummy.PrimaryPart)
+		local dummyHumanoid = dummy:FindFirstChildOfClass("Humanoid")
+		if dummyRoot and dummyRoot.Parent and (not dummyHumanoid or dummyHumanoid.Health > 0) then
+			table.insert(targetRoots, dummyRoot)
+		end
+	end
+
+	return targetRoots
+end
+
+-- debug: why is / isn't the Weakest Dummy a target? (same checks getClosestTargetRoot makes, one reason per failure)
+local function describeDummy()
+	local liveFolder = workspace:FindFirstChild(DUMMY_FOLDER_NAME)
+	if not liveFolder then
+		return "workspace." .. DUMMY_FOLDER_NAME .. " does not exist"
+	end
+	local dummy = liveFolder:FindFirstChild(DUMMY_NAME)
+	if not dummy then
+		return "no '" .. DUMMY_NAME .. "' inside workspace." .. DUMMY_FOLDER_NAME
+	end
+	local dummyRoot = dummy:FindFirstChild("HumanoidRootPart") or (dummy:IsA("Model") and dummy.PrimaryPart)
+	if not (dummyRoot and dummyRoot.Parent) then
+		return "found it, but it has no HumanoidRootPart / PrimaryPart"
+	end
+	local dummyHumanoid = dummy:FindFirstChildOfClass("Humanoid")
+	if dummyHumanoid and dummyHumanoid.Health <= 0 then
+		return "found it, but its Humanoid.Health is " .. tostring(dummyHumanoid.Health) .. " (counts as dead)"
+	end
+	return "OK, counts as a target (root is " .. dummyRoot.Name .. ")"
+end
+
+-- is this target's root inside the hitbox? (fixed padding, NOT the root's own size: some dummy roots are huge)
+local function isRootInsideHitbox(hitbox, targetRoot)
+	local localPosition = hitbox.CFrame:PointToObjectSpace(targetRoot.Position)
+	local reach = hitbox.Size / 2 + Vector3.one * ATTACK3_HITBOX_TOUCH_PADDING
+	return math.abs(localPosition.X) <= reach.X and math.abs(localPosition.Y) <= reach.Y and math.abs(localPosition.Z) <= reach.Z
+end
+
+-- players + the dummy, exactly like attack 1 sees them: the one closest to the hitbox's center wins
+local function findTouchedTarget(hitbox)
+	local bestRoot
+	local bestDistance = math.huge
+	for _, targetRoot in ipairs(getAllTargetRoots()) do
+		if isRootInsideHitbox(hitbox, targetRoot) then
+			local distance = (targetRoot.Position - hitbox.Position).Magnitude
+			if distance < bestDistance then
+				bestDistance = distance
+				bestRoot = targetRoot
+			end
+		end
+	end
+	return bestRoot
+end
+
+-- ===== DODGE VFX: visual only =====
+-- Played around the teleports of attack 3 (depart = where you leave, arrive = where you land). It ONLY spawns effects:
+-- it never moves you, never locks onto anything, never touches the camera or AutoRotate. Everything cleans itself up.
+local DodgeVfx = {}
+
+local function dodgeFolder(life)
+	local folder = Instance.new("Folder")
+	folder.Name = "Attack3DodgeVFX"
+	folder.Parent = workspace
+	task.delay(life, function()
+		folder:Destroy()
+	end)
+	return folder
+end
+
+local function dodgeFlash(parent, position, size)
+	local flash = FX.part(parent, Enum.PartType.Ball, ELEC.white, 0, Vector3.one * 1.2, CFrame.new(position))
+	FX.tween(flash, 0.2, { Transparency = 1, Size = Vector3.one * size })
+	local light = Instance.new("PointLight")
+	light.Color = ELEC.cyan
+	light.Brightness = 12
+	light.Range = 24
+	light.Shadows = false
+	light.Parent = flash
+	FX.tween(light, 0.3, { Brightness = 0 })
+end
+
+local function dodgeSparks(parent, position, count)
+	local anchor = FX.part(parent, Enum.PartType.Block, ELEC.white, 1, Vector3.new(0.1, 0.1, 0.1), CFrame.new(position))
+	FX.burst(anchor, count, {
+		color = ELEC_SEQ,
+		size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }),
+		speed = NumberRange.new(14, 34),
+		spread = Vector2.new(180, 180),
+		lifetime = NumberRange.new(0.2, 0.4),
+		acceleration = Vector3.new(0, -20, 0),
+		drag = 2,
+	})
+end
+
+local function dodgeFloorRings(parent, position, character, radius)
+	local floorHit = FX.floorAt(position, FX.ignoreList(parent, character))
+	if not floorHit then
+		return
+	end
+	local frame = FX.facing(floorHit.Position + Vector3.new(0, 0.12, 0), Vector3.yAxis)
+	FX.shockRing(parent, frame, { startRadius = 1, endRadius = radius, duration = 0.35, thickness = 0.25, color = ELEC.cyan, segments = 36, startTransparency = 0.1 })
+	FX.shockRing(parent, frame, { startRadius = 0.5, endRadius = radius * 0.6, duration = 0.28, thickness = 0.15, color = ELEC.white, segments = 28, startTransparency = 0.2 })
+end
+
+-- leaving: cyan afterimage of your body left behind, a flash + sparks + floor rings, and a lightning streak to where you're going
+function DodgeVfx.depart(character, myRoot, destination)
+	local folder = dodgeFolder(1.2)
+	local origin = myRoot.Position
+
+	for _, part in ipairs(character:GetChildren()) do
+		if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" and part.Transparency < 1 then
+			local ghost = FX.part(folder, Enum.PartType.Block, ELEC.cyan, 0.3, part.Size, part.CFrame)
+			FX.tween(ghost, 0.45, { Transparency = 1, Size = part.Size * 1.25 })
+		end
+	end
+
+	local delta = destination - origin
+	if delta.Magnitude > 1 then
+		local streakFrame = FX.facing(origin + delta / 2, delta)
+		local streak = FX.part(folder, Enum.PartType.Block, ELEC.cyan, 0.15, Vector3.new(1.4, 1.4, delta.Magnitude), streakFrame)
+		FX.tween(streak, 0.3, { Transparency = 1, Size = Vector3.new(0.1, 0.1, delta.Magnitude) })
+		local core = FX.part(folder, Enum.PartType.Block, ELEC.white, 0, Vector3.new(0.5, 0.5, delta.Magnitude), streakFrame)
+		FX.tween(core, 0.22, { Transparency = 1, Size = Vector3.new(0.05, 0.05, delta.Magnitude) })
+		for _ = 1, 3 do
+			elecBolt(folder, origin, destination, 0.3, 0.25, 8, 2.5, false, true)
+		end
+	end
+
+	dodgeFlash(folder, origin, 7)
+	dodgeFloorRings(folder, origin, character, 8)
+	dodgeSparks(folder, origin, 14)
+end
+
+-- landing: flash + shock rings + sparks + a few lightning bolts, and a blue flash over your own body
+function DodgeVfx.arrive(character, myRoot, destination, targetRoot)
+	local folder = dodgeFolder(1.2)
+	local position = myRoot.Position
+
+	dodgeFlash(folder, position, 9)
+	dodgeFloorRings(folder, position, character, 10)
+	dodgeSparks(folder, position, 18)
+
+	for _ = 1, 4 do
+		local direction = Vector3.new(FX.rng:NextNumber(-1, 1), FX.rng:NextNumber(-0.3, 1), FX.rng:NextNumber(-1, 1))
+		if direction.Magnitude < 0.1 then
+			direction = Vector3.yAxis
+		end
+		elecBolt(folder, position, position + direction.Unit * FX.rng:NextNumber(4, 8), 0.25, 0.22, 6, 1.2, false, false)
+	end
+
+	local highlight = Instance.new("Highlight")
+	highlight.Adornee = character
+	highlight.FillColor = ELEC.cyan
+	highlight.OutlineColor = ELEC.white
+	highlight.FillTransparency = 0.2
+	highlight.OutlineTransparency = 0
+	highlight.Parent = folder
+	FX.tween(highlight, 0.4, { FillTransparency = 1, OutlineTransparency = 1 })
+end
+
+-- Every dodge effect goes through here, so an error inside an effect can never stop a teleport, a follow or the "1" keypress
+-- (one warning per stage in the console instead).
+local dodgeFxWarned = {}
+local function playDodgeFx(stage, ...)
+	local ok, err = pcall(function(...)
+		DodgeVfx[stage](...)
+	end, ...)
+	if not ok and not dodgeFxWarned[stage] then
+		dodgeFxWarned[stage] = true
+		warn("[Attack3] dodge effect '" .. stage .. "' errored (teleport still happens):", err)
+	end
+end
+
+-- DODGE: teleports you behind the target (on his back side) and turns you to face him
+local function dodgeBehindTarget(character, targetRoot)
+	local myHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+	if not (myHumanoid and myHumanoid.Health > 0 and myRoot and myRoot.Parent and targetRoot and targetRoot.Parent) then
+		return false
+	end
+
+	local look = targetRoot.CFrame.LookVector
+	local flatLook = Vector3.new(look.X, 0, look.Z)
+	flatLook = flatLook.Magnitude > 0.01 and flatLook.Unit or Vector3.new(0, 0, -1)
+
+	local targetPosition = targetRoot.Position
+	local behindPosition = targetPosition - flatLook * DODGE_BEHIND_DISTANCE
+
+	-- dodge VFX: burst / afterimages at the spot you're leaving (must run before the move)
+	playDodgeFx("depart", character, myRoot, behindPosition)
+
+	myRoot.CFrame = CFrame.lookAt(behindPosition, Vector3.new(targetPosition.X, behindPosition.Y, targetPosition.Z))
+	myRoot.AssemblyLinearVelocity = Vector3.zero
+	myRoot.AssemblyAngularVelocity = Vector3.zero
+
+	-- dodge VFX: flash, rings, sparks, bolts, blue highlight (visual only: no camera lock, no lock-on)
+	playDodgeFx("arrive", character, myRoot, behindPosition, targetRoot)
+	return true
+end
+
+-- ===== FOLLOW BEHIND THE TARGET: the exact lock attack 1 uses in runSequence, copied line for line =====
+-- Same BEHIND_DISTANCE / LOCK_* settings, same direction pick, same lock function, same three per-frame hooks.
+-- The lock itself does the teleport (its first call moves us), exactly like attack 1: NO dodge teleport before it, so the
+-- direction is picked from where we really stand (approach line us -> target), not from a spot a dodge already moved us to.
+-- On top of that it plays the dodge VFX around the teleport (DodgeVfx.depart right before it, DodgeVfx.arrive right after it).
+-- The effect is only visual: the position still comes from attack 1's lock, and an error in the effect can never stop the follow.
+-- Returns a function that stops the follow (what attack 1 does in returnToPlayer / finishSequence).
+local function followBehindTarget(character, targetRoot)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not (humanoid and rootPart and targetRoot) then
+		return function() end
+	end
+
+	-- Every-frame lock: the real character stays behind the target AND faces it.
+	-- It runs before physics, after physics and right before render, so neither the humanoid
+	-- controller, network interpolation nor the target's movement can knock us off position.
+	local lockConnections = {}
+	local savedAutoRotate = humanoid.AutoRotate
+	local lockDirection -- unit vector target -> our spot, fixed once at teleport time (see pickLockDirection)
+	local sequenceFinished = false
+
+	local function stopLock()
+		for _, lockConnection in ipairs(lockConnections) do
+			lockConnection:Disconnect()
+		end
+		table.clear(lockConnections)
+	end
+
+	-- "Behind" = the far side of the target from where we teleport in from, the same way the
+	-- original teleport works: spot = targetPosition + unit(targetPosition - myPosition) * distance.
+	-- The direction is picked ONCE, at the moment of the teleport. Re-deriving it from our own
+	-- position every frame would flip us to the other side of the target on each frame.
+	local function pickLockDirection()
+		local targetPosition = targetRoot.Position
+		local myPosition = rootPart.Position
+		local approach = Vector3.new(targetPosition.X - myPosition.X, 0, targetPosition.Z - myPosition.Z)
+		if approach.Magnitude > 0.01 then
+			lockDirection = approach.Unit
+		else
+			-- standing right on top of the target: fall back to the back of the target
+			local look = targetRoot.CFrame.LookVector
+			local flatLook = Vector3.new(look.X, 0, look.Z)
+			lockDirection = flatLook.Magnitude > 0.01 and -flatLook.Unit or Vector3.new(0, 0, 1)
+		end
+	end
+
+	-- where the lock wants us right now (same math attack 1's lockBehindTarget runs every frame)
+	local function getLockSpot()
+		local targetPosition = targetRoot.Position
+
+		-- the server sees both of us a little late, so aim where the target will be, not where it is drawn
+		local anchorPosition = targetPosition
+		if LOCK_PREDICT_LATENCY then
+			local leadTime = math.clamp(localPlayer:GetNetworkPing(), 0, LOCK_MAX_PREDICT_TIME)
+			local lead = targetRoot.AssemblyLinearVelocity * leadTime
+			if lead.Magnitude > LOCK_MAX_LEAD then
+				lead = lead.Unit * LOCK_MAX_LEAD
+			end
+			anchorPosition = targetPosition + lead
+		end
+
+		local behindPosition = anchorPosition + lockDirection * ATTACK3_FOLLOW_BEHIND_DISTANCE
+
+		-- always face the target's real position (flat), falling back to straight back along the lock line
+		local facePoint = Vector3.new(targetPosition.X, behindPosition.Y, targetPosition.Z)
+		if (facePoint - behindPosition).Magnitude < 0.01 then
+			facePoint = behindPosition - lockDirection
+		end
+
+		return behindPosition, facePoint
+	end
+
+	local function lockBehindTarget()
+		if sequenceFinished then
+			return
+		end
+		if not (rootPart.Parent and targetRoot and targetRoot.Parent) then
+			stopLock()
+			return
+		end
+		if not lockDirection then
+			return
+		end
+
+		local behindPosition, facePoint = getLockSpot()
+
+		rootPart.CFrame = CFrame.lookAt(behindPosition, facePoint)
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	-- start: exactly what attack 1's TELEPORT_DELAY callback does, with the dodge effect wrapped around the first teleport
+	humanoid.AutoRotate = false -- stop the humanoid turning us toward our movement direction
+	pickLockDirection()
+
+	local landingSpot = getLockSpot()
+	-- dodge effect, leaving: burst / afterimages at the spot we're leaving (must run before the move)
+	playDodgeFx("depart", character, rootPart, landingSpot)
+
+	lockBehindTarget() -- the teleport itself, from attack 1's lock
+	table.insert(lockConnections, RunService.PreSimulation:Connect(lockBehindTarget))
+	table.insert(lockConnections, RunService.Heartbeat:Connect(lockBehindTarget))
+	table.insert(lockConnections, RunService.PreRender:Connect(lockBehindTarget))
+
+	-- dodge effect, arriving: highlight, sounds, blink, landing effects
+	playDodgeFx("arrive", character, rootPart, landingSpot, targetRoot)
+
+	-- stop
+	return function()
+		sequenceFinished = true
+		stopLock()
+		humanoid.AutoRotate = savedAutoRotate
+	end
+end
+
+-- KEYPRESS 1: executor keypress()/keyrelease() with the key code for "1"
+local function pressKeyOne()
+	print("[Attack3] pressing 1")
+	keypress(KEY_ONE)
+	task.wait(KEYPRESS_HOLD_TIME)
+	keyrelease(KEY_ONE)
+end
+
+local function runAttack3(character, animator, onDone)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	local camera = workspace.CurrentCamera
+	local legs = {
+		{ part = character:FindFirstChild("Right Leg") or character:FindFirstChild("RightFoot"), rest = Vector3.new(0.5, -3, 0) },
+		{ part = character:FindFirstChild("Left Leg") or character:FindFirstChild("LeftFoot"), rest = Vector3.new(-0.5, -3, 0) },
+	}
+	local kick = legs[1].part and legs[1] or legs[2]
+	if not root or not camera or not kick.part then
+		onDone()
+		return
+	end
+
+	local animation = Instance.new("Animation")
+	animation.AnimationId = ATTACK3_ANIM_ID
+	local track = animator:LoadAnimation(animation)
+	local waited = 0
+	while track.Length == 0 and waited < 2 do -- first load: wait until the length is known so TimePosition sticks
+		waited = waited + task.wait()
+	end
+	track.Priority = Enum.AnimationPriority.Action4
+	track.Looped = false
+	track:Play(0)
+	track.TimePosition = ATTACK3_START_TIME
+
+	local rng = FX.rng
+	local ball, block = Enum.PartType.Ball, Enum.PartType.Block
+	local lighting = game:GetService("Lighting")
+	local fxFolder = Instance.new("Folder")
+	fxFolder.Name = "Attack3FX"
+	fxFolder.Parent = workspace
+	local ignore = FX.ignoreList(fxFolder, workspace:FindFirstChild(DUMMY_FOLDER_NAME))
+
+	-- target: found ONCE at the start, exactly like attack 1 (local targetRoot = getClosestTargetRoot(rootPart.Position))
+	local attackTargetRoot = getClosestTargetRoot(root.Position)
+
+	-- ===== 8x8x8 hitbox: lives for ATTACK3_HITBOX_LIFETIME during the startup; a miss teleports + follows until the impact =====
+	local hitbox = Instance.new("Part")
+	hitbox.Name = "Attack3Hitbox"
+	hitbox.Size = ATTACK3_HITBOX_SIZE
+	hitbox.Anchored = true
+	hitbox.CanCollide = false
+	hitbox.CanTouch = false
+	hitbox.CanQuery = false
+	hitbox.CastShadow = false
+	hitbox.Material = Enum.Material.Neon
+	hitbox.Color = ELEC.cyan
+	hitbox.Transparency = ATTACK3_HITBOX_VISIBLE and 0.7 or 1
+	hitbox.CFrame = root.CFrame * ATTACK3_HITBOX_OFFSET
+	hitbox.Parent = fxFolder
+
+	local hitTarget -- first target that touched the hitbox during its lifespan
+	local stopFollow -- set while we're following the nearest player after a miss
+	local hitboxConnection
+	local function scanHitbox()
+		if not hitbox.Parent or not root.Parent then
+			return
+		end
+		-- guarded: an error in here must never be able to stop the miss from firing
+		local ok, touched = pcall(function()
+			hitbox.CFrame = root.CFrame * ATTACK3_HITBOX_OFFSET
+			return findTouchedTarget(hitbox)
+		end)
+		if not ok then
+			warn("[Attack3] hitbox scan error:", touched)
+		elseif touched and not hitTarget then
+			hitTarget = touched
+		end
+	end
+	local function stopHitbox()
+		if hitboxConnection then
+			hitboxConnection:Disconnect()
+			hitboxConnection = nil
+		end
+		hitbox:Destroy()
+	end
+	local hitboxBorn = os.clock()
+	local hitboxResolved = false
+	-- the hitbox's lifespan is over (also called by the impact, so a missed expiry can never skip it)
+	local function resolveHitbox()
+		if hitboxResolved then
+			return
+		end
+		hitboxResolved = true
+		scanHitbox() -- last look before it's destroyed
+		local boxCFrame = root.CFrame * ATTACK3_HITBOX_OFFSET
+		print("[Attack3] Weakest Dummy:", describeDummy())
+		stopHitbox()
+		if hitTarget then
+			print("[Attack3] HIT ->", hitTarget.Parent and hitTarget.Parent.Name or hitTarget.Name)
+		else
+			-- debug: where was everyone relative to the box? (a target counts as hit when all three numbers are inside the reach)
+			local reach = ATTACK3_HITBOX_SIZE / 2 + Vector3.one * ATTACK3_HITBOX_TOUCH_PADDING
+			print(string.format("[Attack3] box reach (x,y,z) = %.1f, %.1f, %.1f", reach.X, reach.Y, reach.Z))
+			for _, candidateRoot in ipairs(getAllTargetRoots()) do
+				local localPosition = boxCFrame:PointToObjectSpace(candidateRoot.Position)
+				print(string.format(
+					"[Attack3]   %s is at (x,y,z) = %.1f, %.1f, %.1f from the box center",
+					candidateRoot.Parent and candidateRoot.Parent.Name or candidateRoot.Name,
+					localPosition.X, localPosition.Y, localPosition.Z
+				))
+			end
+		end
+		if not hitTarget then
+			-- MISS: the moment the hitbox is destroyed, do what attack 1 does (minus the clone): take the closest target (players + the dummy)
+			-- found at the start and run attack 1's lock on it. The lock's first call teleports us behind him and every frame after keeps us there.
+			-- The follow plays the dodge effect around that teleport. The impact stops the follow. No second teleport, no keypress.
+			local nearestRoot = (attackTargetRoot and attackTargetRoot.Parent and attackTargetRoot) or getClosestTargetRoot(root.Position)
+			if nearestRoot then
+				print("[Attack3] MISS -> following", nearestRoot.Parent and nearestRoot.Parent.Name or nearestRoot.Name)
+				local followOk, followResult = pcall(followBehindTarget, character, nearestRoot)
+				if followOk then
+					stopFollow = followResult
+				else
+					warn("[Attack3] miss follow error:", followResult)
+				end
+			else
+				print("[Attack3] MISS, but there is no target (no other live player and no Weakest Dummy)")
+			end
+		end
+	end
+	hitboxConnection = RunService.Heartbeat:Connect(function()
+		scanHitbox()
+		if os.clock() - hitboxBorn >= ATTACK3_HITBOX_LIFETIME then
+			resolveHitbox()
+		end
+	end)
+	task.delay(ATTACK3_HITBOX_LIFETIME + 0.05, resolveHitbox) -- backup: the expiry can't depend on one connection alone
+
+	local function randomUnit()
+		local vector = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-1, 1), rng:NextNumber(-1, 1))
+		return vector.Magnitude > 0.01 and vector.Unit or Vector3.yAxis
+	end
+
+	-- screen layer
+	local grade = Instance.new("ColorCorrectionEffect")
+	grade.Parent = lighting
+	local blur = Instance.new("BlurEffect")
+	blur.Size = 0
+	blur.Parent = lighting
+
+	-- electric glow on the whole character
+	local aura = Instance.new("Highlight")
+	aura.Adornee = character
+	aura.FillColor = ELEC.blue
+	aura.OutlineColor = ELEC.cyan
+	aura.FillTransparency = 1
+	aura.OutlineTransparency = 1
+	aura.DepthMode = Enum.HighlightDepthMode.Occluded
+	aura.Parent = fxFolder
+
+	-- glow on the kicking leg only
+	local legGlow = Instance.new("Highlight")
+	legGlow.FillColor = ELEC.blue
+	legGlow.OutlineColor = ELEC.cyan
+	legGlow.FillTransparency = 1
+	legGlow.OutlineTransparency = 1
+	legGlow.DepthMode = Enum.HighlightDepthMode.Occluded
+	legGlow.Parent = fxFolder
+
+	-- charging orb on the foot: small and blue, only turns bright right at the end
+	local orb = FX.part(fxFolder, ball, ELEC.blue, 0.45, Vector3.one * 0.15, CFrame.new(root.Position))
+	local orbShell = FX.part(fxFolder, ball, ELEC.blue, 0.85, Vector3.one * 0.4, CFrame.new(root.Position))
+	local orbLight = Instance.new("PointLight")
+	orbLight.Color = ELEC.blue
+	orbLight.Range = 12
+	orbLight.Brightness = 0
+	orbLight.Shadows = false
+	orbLight.Parent = orb
+
+	-- swoosh trails along both legs (only the kicking one really moves)
+	local trailBits = {}
+	for _, leg in ipairs(legs) do
+		if leg.part then
+			local half = leg.part.Size.Y / 2
+			local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+			a0.Position = Vector3.new(0, half, 0)
+			a1.Position = Vector3.new(0, -half - 0.4, 0)
+			a0.Parent, a1.Parent = leg.part, leg.part
+			local trail = Instance.new("Trail")
+			trail.Attachment0, trail.Attachment1 = a0, a1
+			trail.Lifetime = 0.3
+			trail.LightEmission = 1
+			trail.LightInfluence = 0
+			trail.FaceCamera = false
+			trail.Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, ELEC.cyan),
+				ColorSequenceKeypoint.new(0.5, ELEC.blue),
+				ColorSequenceKeypoint.new(1, ELEC.deep),
+			})
+			trail.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.3),
+				NumberSequenceKeypoint.new(0.5, 0.55),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+			trail.WidthScale = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.2) })
+			trail.Parent = leg.part
+			table.insert(trailBits, a0)
+			table.insert(trailBits, a1)
+			table.insert(trailBits, trail)
+		end
+	end
+
+	local startClock = os.clock()
+	local baseFov = camera.FieldOfView
+	local seed = rng:NextNumber(1, 90)
+	local shakeStart, shakeRoll
+	local fired, fireElapsed = false, 0
+	local zapRoot
+	local nextArc, nextZap = 0, 0
+	local streaks = {}
+	local streakDebt = 0
+	local HELIX_POINTS = 8
+	local helixParts = { {}, {} }
+	for strand = 1, 2 do
+		for index = 1, HELIX_POINTS do
+			helixParts[strand][index] = FX.part(fxFolder, block, strand == 1 and ELEC.cyan or ELEC.blue, 1, Vector3.new(0.05, 0.05, 0.5), CFrame.new(root.Position))
+		end
+	end
+	local function streakAt(streak, foot, e) -- spiral in towards the foot
+		return foot + CFrame.Angles(0, streak.swirl * e, 0) * (streak.rel * (1 - e))
+	end
+
+	-- floor under the shooter
+	local floorHit = FX.floorAt(root.Position, ignore)
+	local floorPos = floorHit and (floorHit.Position + Vector3.new(0, 0.2, 0)) or (root.Position - Vector3.new(0, 2.8, 0))
+	if floorHit then
+		local floorFrame = FX.facing(floorHit.Position + floorHit.Normal * 0.15, floorHit.Normal)
+		FX.shockRing(fxFolder, floorFrame, { startRadius = 10, endRadius = 1, duration = ATTACK3_WINDUP + 0.05, thickness = 0.2, color = ELEC.blue, segments = 44, easeIn = true, startTransparency = 0.45 })
+		FX.shockRing(fxFolder, floorFrame, { startRadius = 6, endRadius = 0.6, duration = ATTACK3_WINDUP, thickness = 0.14, color = ELEC.cyan, segments = 36, easeIn = true, startTransparency = 0.55 })
+	end
+	FX.sound(ATTACK3_SOUNDS.charge, root)
+
+	-- camera: shake + FOV are applied at the very last render priority so nothing overwrites them; the offset is only undone
+	-- if the camera still holds exactly what we left, so it never feeds back into your look direction
+	local lastOffset, lastApplied = CFrame.identity, nil
+	RunService:BindToRenderStep("Attack3CamPre", Enum.RenderPriority.First.Value, function()
+		if lastApplied and camera.CFrame == lastApplied then
+			camera.CFrame = camera.CFrame * lastOffset:Inverse()
+		end
+		lastApplied = nil
+	end)
+	RunService:BindToRenderStep("Attack3CamPost", Enum.RenderPriority.Last.Value, function()
+		local now = os.clock()
+		local shake, fov, roll, push = 0, baseFov, 0, 0
+		if shakeStart then
+			local age = now - shakeStart
+			shake = math.exp(-age * 4.2)
+			fov = baseFov + 26 * math.exp(-age * 7.5) + 4 * math.sin(age * 14) * math.exp(-age * 5)
+			roll = shakeRoll * 0.12 * shake * math.cos(age * 30)
+			push = 2.5 * math.exp(-age * 9) * math.cos(age * 18)
+		else
+			local windup = math.clamp((now - startClock) / ATTACK3_WINDUP, 0, 1)
+			shake = windup ^ 3 * 0.3
+			fov = baseFov - 10 * windup ^ 2
+		end
+		local t = now * 55
+		lastOffset = CFrame.new(math.noise(t, seed, 0.5) * 3.2 * shake, math.noise(t, seed + 7, 0.5) * 3.2 * shake, push)
+			* CFrame.Angles(math.noise(t, seed + 13, 0.5) * 0.2 * shake, math.noise(t, seed + 21, 0.5) * 0.2 * shake, roll)
+		camera.CFrame = camera.CFrame * lastOffset
+		lastApplied = camera.CFrame
+		camera.FieldOfView = fov
+	end)
+
+	-- the slash: a tapered white-hot / cyan blade shoots forward from the foot, flares wide, thins out and flies away while
+	-- jagged lightning crackles along it
+	local slashStep, slashBorn
+	local function launchSlash(origin, dir)
+		local length = ATTACK3_SLASH_LENGTH
+		local right = dir:Cross(Vector3.yAxis)
+		right = right.Magnitude > 0.01 and right.Unit or Vector3.xAxis
+		local up = right:Cross(dir).Unit
+
+		local tailPart, tailAtt = FX.node(fxFolder)
+		local midPart, midAtt = FX.node(fxFolder)
+		local headPart, headAtt = FX.node(fxFolder)
+		local layers = {
+			{ scale = 2.4, base = 0.72, z = 0, tail = ColorSequence.new(ELEC.blue, ELEC.cyan), head = ColorSequence.new(ELEC.cyan, ELEC.blue) },
+			{
+				scale = 1,
+				base = 0.1,
+				z = 1,
+				tail = ColorSequence.new(ELEC.cyan, ELEC.white),
+				head = ColorSequence.new({
+					ColorSequenceKeypoint.new(0, ELEC.white),
+					ColorSequenceKeypoint.new(0.45, ELEC.cyan),
+					ColorSequenceKeypoint.new(1, ELEC.blue),
+				}),
+			},
+			{ scale = 0.35, base = 0, z = 2, tail = ColorSequence.new(ELEC.white), head = ColorSequence.new(ELEC.white) },
+		}
+		local beams = {}
+		for _, layer in ipairs(layers) do
+			local tailBeam = FX.beam(fxFolder, tailAtt, midAtt, layer.tail, 0, 0, NumberSequence.new(layer.base), layer.z)
+			local headBeam = FX.beam(fxFolder, midAtt, headAtt, layer.head, 0, 0, NumberSequence.new(layer.base), layer.z)
+			table.insert(beams, { tail = tailBeam, head = headBeam, scale = layer.scale })
+		end
+
+		-- opening crackle: long bolts down the whole slash plus forks thrown off it
+		for _ = 1, 4 do
+			local offset = right * rng:NextNumber(-1.2, 1.2) + up * rng:NextNumber(-0.8, 1.2)
+			elecBolt(fxFolder, origin + offset * 0.3, origin + offset + dir * length * rng:NextNumber(0.55, 1), 0.34, 0.24, 14, 1.3)
+		end
+		for _ = 1, 8 do
+			local p = origin + dir * length * rng:NextNumber(0.05, 0.85)
+			local q = p + right * rng:NextNumber(-6, 6) + up * rng:NextNumber(-3, 4) + dir * rng:NextNumber(0, 4)
+			elecBolt(fxFolder, p, q, 0.2, 0.16, 6, 0.9)
+		end
+
+		-- thin vertical streaks at the contact point
+		for _ = 1, 5 do
+			local height = rng:NextNumber(12, 24)
+			local base = origin + right * rng:NextNumber(-1.8, 1.8) + dir * rng:NextNumber(-0.5, 5)
+			local streak = FX.part(fxFolder, block, ELEC.white, 0.05, Vector3.new(0.14, height, 0.14), CFrame.new(base.X, floorPos.Y + height / 2, base.Z))
+			FX.tween(streak, rng:NextNumber(0.18, 0.3), { Transparency = 1, Size = Vector3.new(0.02, height * 1.2, 0.02) })
+		end
+
+		-- thin speed streaks running parallel to the blade
+		for _ = 1, 5 do
+			local _, aAtt = FX.node(fxFolder)
+			local _, bAtt = FX.node(fxFolder)
+			local start = origin + right * rng:NextNumber(-3, 3) + up * rng:NextNumber(-1.5, 2) + dir * rng:NextNumber(0, 4)
+			aAtt.Parent.CFrame = CFrame.new(start)
+			bAtt.Parent.CFrame = CFrame.new(start + dir * length * rng:NextNumber(0.45, 0.9))
+			local streakBeam = FX.beam(
+				fxFolder,
+				aAtt,
+				bAtt,
+				ColorSequence.new(ELEC.white, ELEC.cyan),
+				0.5,
+				0,
+				NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(0.3, 0.2), NumberSequenceKeypoint.new(1, 1) }),
+				0
+			)
+			FX.tween(streakBeam, rng:NextNumber(0.25, 0.45), { Width0 = 0 })
+		end
+
+		local nextBolt = 0
+		return function(t)
+			local grow = 1 - (1 - math.clamp(t / 0.1, 0, 1)) ^ 3 -- the tip shoots out almost instantly
+			local leave = math.clamp((t - 0.16) / 0.5, 0, 1) ^ 2 -- then the tail lets go and the slash flies away
+			local head = origin + dir * length * grow
+			local tail = origin + dir * length * 0.8 * leave
+			local mid = tail + (head - tail) * 0.22
+			tailPart.CFrame, midPart.CFrame, headPart.CFrame = CFrame.new(tail), CFrame.new(mid), CFrame.new(head)
+
+			-- wide flare that collapses into a thin streak
+			local width = (6.5 * math.exp(-t * 9) + 1.1 * math.exp(-t * 3.2)) * math.clamp(1 - t / 0.8, 0, 1)
+			for _, set in ipairs(beams) do
+				set.tail.Width1 = width * set.scale
+				set.head.Width0 = width * set.scale
+			end
+
+			if t < 0.5 and t >= nextBolt then
+				nextBolt = t + 0.04
+				for _ = 1, 3 do
+					local p = tail:Lerp(head, rng:NextNumber(0.02, 0.9)) + right * rng:NextNumber(-2, 2) + up * rng:NextNumber(-1.5, 1.5)
+					local q = p + dir * rng:NextNumber(6, 16) + right * rng:NextNumber(-2.5, 2.5) + up * rng:NextNumber(-2, 2)
+					elecBolt(fxFolder, p, q, rng:NextNumber(0.18, 0.34), rng:NextNumber(0.12, 0.2), 6, 0.9)
+				end
+			end
+			return t < 0.9
+		end
+	end
+
+	local function impact(foot)
+		local look = root.CFrame.LookVector
+		local flat = Vector3.new(look.X, 0, look.Z)
+		flat = flat.Magnitude > 0.05 and flat.Unit or look
+		local position = foot + flat * 0.4
+		shakeStart, shakeRoll = os.clock(), rng:NextNumber() < 0.5 and -1 or 1
+
+		orb:Destroy()
+		orbShell:Destroy()
+
+		-- small contact flash
+		local flash = FX.part(fxFolder, ball, ELEC.white, 0, Vector3.one * 1.2, CFrame.new(position))
+		FX.tween(flash, 0.12, { Transparency = 1, Size = Vector3.one * 5 })
+		local light = Instance.new("PointLight")
+		light.Color = ELEC.cyan
+		light.Brightness = 14
+		light.Range = 30
+		light.Shadows = false
+		light.Parent = flash
+		FX.tween(light, 0.35, { Brightness = 0 })
+		FX.sound(ATTACK3_SOUNDS.impact, flash)
+
+		slashStep, slashBorn = launchSlash(position, flat), os.clock()
+
+		-- smoke plume thrown forward along the slash + a dust puff off the floor
+		local smokeSize = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2), NumberSequenceKeypoint.new(1, 7) })
+		local smokeFade = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(0.5, 0.85), NumberSequenceKeypoint.new(1, 1) })
+		local smokeColor = ColorSequence.new(Color3.fromRGB(200, 225, 245), Color3.fromRGB(160, 195, 235))
+		local plume = FX.part(fxFolder, block, ELEC.white, 1, Vector3.new(0.1, 0.1, 0.1), FX.facing(position, flat))
+		FX.burst(plume, 8, { texture = SMOKE_TEXTURE, color = smokeColor, size = smokeSize, transparency = smokeFade, lightEmission = 0.2, speed = NumberRange.new(12, 30), spread = Vector2.new(40, 40), lifetime = NumberRange.new(0.35, 0.65), acceleration = Vector3.new(0, 3, 0), drag = 3 })
+		local dust = FX.part(fxFolder, block, ELEC.white, 1, Vector3.new(0.1, 0.1, 0.1), FX.facing(floorPos, Vector3.yAxis))
+		FX.burst(dust, 5, { texture = SMOKE_TEXTURE, color = smokeColor, size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.5), NumberSequenceKeypoint.new(1, 5) }), transparency = smokeFade, lightEmission = 0.1, speed = NumberRange.new(8, 20), spread = Vector2.new(80, 80), lifetime = NumberRange.new(0.4, 0.7), acceleration = Vector3.new(0, 1, 0), drag = 3 })
+
+		-- hit flash + electrocution on whoever got kicked
+		local targetRoot = getClosestTargetRoot(position)
+		if targetRoot and (targetRoot.Position - position).Magnitude < 9 then
+			zapRoot = targetRoot
+			local highlight = Instance.new("Highlight")
+			highlight.Adornee = targetRoot.Parent
+			highlight.FillColor = ELEC.cyan
+			highlight.OutlineColor = ELEC.white
+			highlight.FillTransparency = 0.1
+			highlight.OutlineTransparency = 0
+			highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+			highlight.Parent = fxFolder
+			FX.tween(highlight, 0.45, { FillTransparency = 1, OutlineTransparency = 1 })
+		end
+
+		-- screen: white-blue flash, blue grade, blur pulse
+		grade.Brightness = 0.4
+		grade.TintColor = Color3.fromRGB(170, 215, 255)
+		grade.Contrast = 0.3
+		grade.Saturation = 0.2
+		FX.tween(grade, 0.5, { Brightness = 0, TintColor = Color3.new(1, 1, 1), Contrast = 0, Saturation = 0 })
+		blur.Size = 20
+		FX.tween(blur, 0.45, { Size = 0 })
+
+		-- impact: the miss follow stops here. HIT (someone touched the hitbox) = wait the extra second, dodge behind him, press "1".
+		resolveHitbox() -- no-op if the hitbox already expired
+		if stopFollow then
+			stopFollow()
+			stopFollow = nil
+		end
+		if hitTarget then
+			local victimRoot = hitTarget
+			print("[Attack3] hit follow-up scheduled (dodge behind him + press 1) in", ATTACK3_POST_IMPACT_DELAY, "s")
+			task.delay(ATTACK3_POST_IMPACT_DELAY, function()
+				if dodgeBehindTarget(character, victimRoot) then
+					pressKeyOne()
+				else
+					warn("[Attack3] hit follow-up cancelled: dodge refused (you or the target is gone / dead)")
+				end
+			end)
+		end
+	end
+
+	local finished = false
+	local function finish()
+		if finished then
+			return
+		end
+		finished = true
+		stopHitbox()
+		if stopFollow then
+			stopFollow()
+			stopFollow = nil
+		end
+		RunService:UnbindFromRenderStep("Attack3CamPre")
+		RunService:UnbindFromRenderStep("Attack3CamPost")
+		camera.FieldOfView = baseFov
+		for _, bit in ipairs(trailBits) do
+			bit:Destroy()
+		end
+		grade:Destroy()
+		blur:Destroy()
+		fxFolder:Destroy()
+		onDone()
+	end
+
+	FX.run(fxFolder, ATTACK3_TOTAL, function(alpha, elapsed)
+		local animTime = track.IsPlaying and track.TimePosition or (ATTACK3_START_TIME + elapsed)
+		local windup = math.clamp((animTime - ATTACK3_START_TIME) / ATTACK3_WINDUP, 0, 1)
+		kick = pickKickLeg(legs, root, kick)
+		local foot = legTip(kick)
+		local flicker = rng:NextNumber()
+
+		if not fired then
+			-- everything rides a slow curve: dim and blue for most of the wind-up, only really brightens right at the end
+			local p = windup ^ 2.6
+			local h = windup ^ 1.6
+			orb.Size = Vector3.one * (0.15 + 1.1 * p)
+			orb.CFrame = CFrame.new(foot)
+			orb.Color = ELEC.blue:Lerp(ELEC.cyan, p)
+			orb.Transparency = 0.45 - 0.3 * p
+			orbShell.Size = Vector3.one * (0.4 + 2.2 * p) * (0.9 + 0.2 * flicker)
+			orbShell.CFrame = CFrame.new(foot)
+			orbShell.Transparency = 0.85 - 0.25 * p
+			orbLight.Brightness = 0.4 + 2.6 * p
+			legGlow.Adornee = kick.part
+			legGlow.FillTransparency = math.clamp(0.93 - 0.35 * p - 0.05 * flicker, 0, 1)
+			legGlow.OutlineTransparency = math.clamp(0.85 - 0.45 * p + 0.1 * flicker, 0, 1)
+			aura.OutlineTransparency = math.clamp(0.9 - 0.4 * p, 0, 1)
+			grade.TintColor = Color3.new(1, 1, 1):Lerp(Color3.fromRGB(205, 225, 255), p)
+			grade.Contrast = 0.05 * p
+
+			-- two electric coils spiralling up the kicking leg
+			local legCFrame, legSize = kick.part.CFrame, kick.part.Size
+			local thick = 0.05 + 0.06 * h
+			local coilFade = math.clamp(0.92 - 0.6 * h - 0.08 * flicker, 0, 1)
+			for strand = 1, 2 do
+				local previous
+				for index = 0, HELIX_POINTS do
+					local along = index / HELIX_POINTS
+					local angle = along * math.pi * 3 + elapsed * 16 * (strand == 1 and 1 or -1) + (strand - 1) * math.pi
+					local point = legCFrame * Vector3.new(math.cos(angle) * 0.85, (along - 0.5) * legSize.Y, math.sin(angle) * 0.85)
+					if previous and (point - previous).Magnitude > 0.02 then
+						local piece = helixParts[strand][index]
+						piece.Size = Vector3.new(thick, thick, (point - previous).Magnitude + thick)
+						piece.CFrame = FX.facing((point + previous) / 2, point - previous)
+						piece.Transparency = coilFade
+					end
+					previous = point
+				end
+			end
+
+			-- energy drawn into the foot in a slow swirl: a few thin streaks at first, a stream near the end
+			streakDebt = streakDebt + 0.12 + 1.1 * windup ^ 1.5
+			while streakDebt >= 1 do
+				streakDebt = streakDebt - 1
+				local streak = FX.part(fxFolder, block, rng:NextNumber() < 0.6 and ELEC.blue or ELEC.cyan, 0.4, Vector3.new(0.08, 0.08, 1), CFrame.new(foot))
+				table.insert(streaks, {
+					part = streak,
+					rel = randomUnit() * rng:NextNumber(5, 8.5),
+					swirl = rng:NextNumber(0.9, 1.8) * (rng:NextNumber() < 0.5 and -1 or 1),
+					born = os.clock(),
+					life = rng:NextNumber(0.18, 0.28),
+				})
+			end
+
+			-- crackle: dim thin arcs up the leg, off the foot, across the floor, from the ground into the foot; denser as it charges
+			if elapsed >= nextArc then
+				nextArc = elapsed + 0.09 - 0.05 * windup
+				if rng:NextNumber() < 0.25 + 0.75 * windup then
+					elecBolt(fxFolder, kick.part.Position + randomUnit() * 0.3, foot + randomUnit() * 0.3, 0.07, 0.1, 5, 0.35, nil, true)
+				end
+				if rng:NextNumber() < windup then
+					elecBolt(fxFolder, foot, foot + randomUnit() * rng:NextNumber(1.5, 2.2 + 1.8 * windup), 0.06, 0.09, 4, 0.45, nil, true)
+				end
+				if rng:NextNumber() < 0.6 * windup then
+					elecBolt(fxFolder, root.Position + randomUnit() * 0.8, root.Position + randomUnit() * 2.5, 0.05, 0.09, 4, 0.4, nil, true)
+				end
+				if rng:NextNumber() < 0.35 + 0.4 * windup then
+					local angle = rng:NextNumber(0, math.pi * 2)
+					local radial = Vector3.new(math.cos(angle), 0, math.sin(angle))
+					local from = floorPos + radial * rng:NextNumber(0.5, 1.5)
+					elecBolt(fxFolder, from, from + radial * rng:NextNumber(2.5, 4 + 2 * windup), 0.08, 0.12, 6, 0.6, true, true)
+				end
+				if windup > 0.5 and rng:NextNumber() < 0.45 then
+					elecBolt(fxFolder, Vector3.new(foot.X, floorPos.Y, foot.Z), foot, 0.07, 0.1, 6, 0.4, nil, true)
+				end
+			end
+
+			if windup >= 1 or elapsed >= ATTACK3_WINDUP + 0.12 then
+				fired, fireElapsed = true, elapsed
+				impact(foot)
+				legGlow:Destroy()
+				for _, strand in ipairs(helixParts) do
+					for _, piece in ipairs(strand) do
+						piece:Destroy()
+					end
+				end
+			end
+		else
+			local age = elapsed - fireElapsed
+			local fade = math.clamp(age / 0.5, 0, 1)
+			aura.FillTransparency = math.clamp(0.5 + 0.5 * fade + 0.1 * flicker * (1 - fade), 0, 1)
+			aura.OutlineTransparency = math.clamp(0.1 + 0.9 * fade, 0, 1)
+			if age > 0.35 then
+				for _, bit in ipairs(trailBits) do
+					if bit:IsA("Trail") then
+						bit.Enabled = false
+					end
+				end
+			end
+
+			-- electricity crawling over whoever got kicked
+			if zapRoot and zapRoot.Parent and age < 0.6 and elapsed >= nextZap then
+				nextZap = elapsed + 0.05
+				local center = zapRoot.Position
+				local radius = 1 + 2 * (1 - age / 0.6)
+				elecBolt(fxFolder, center + randomUnit() * radius, center + randomUnit() * radius, 0.18, 0.12, 5, 0.7)
+				if rng:NextNumber() < 0.5 then
+					elecBolt(fxFolder, center, center + randomUnit() * rng:NextNumber(3, 7), 0.16, 0.12, 5, 0.9)
+				end
+			end
+
+			if slashStep and not slashStep(os.clock() - slashBorn) then
+				slashStep = nil
+			end
+		end
+
+		for index = #streaks, 1, -1 do
+			local streak = streaks[index]
+			local t = (os.clock() - streak.born) / streak.life
+			if t >= 1 then
+				streak.part:Destroy()
+				table.remove(streaks, index)
+			else
+				local eased = t ^ 1.6
+				local head = streakAt(streak, foot, eased)
+				local tail = streakAt(streak, foot, math.max(eased - 0.2, 0))
+				local length = (head - tail).Magnitude
+				if length > 0.02 then
+					streak.part.Size = Vector3.new(0.08, 0.08, length)
+					streak.part.CFrame = FX.facing((head + tail) / 2, head - tail)
+				end
+				streak.part.Transparency = 0.4 + 0.6 * t ^ 2
+			end
+		end
+	end, finish)
+	task.delay(ATTACK3_TOTAL + 1, finish) -- safety net: camera / FOV / lighting always come back
+end
+
 local sequenceBusy = false
 local attackRunning = false
+local attack3Running = false
 
 RunService.Heartbeat:Connect(function()
 	local character = localPlayer.Character
@@ -1949,6 +2988,23 @@ RunService.Heartbeat:Connect(function()
 				attackRunning = false
 			end)
 
+			break
+		end
+
+		if track.Animation and string.find(track.Animation.AnimationId, TRIGGER_ANIM_IDS.ATTACK3) then
+			track:Stop(0)
+			if not attack3Running then
+				attack3Running = true
+				task.spawn(function()
+					local ok, err = pcall(runAttack3, character, animator, function()
+						attack3Running = false
+					end)
+					if not ok then
+						warn("[Attack3] Error:", err)
+						attack3Running = false
+					end
+				end)
+			end
 			break
 		end
 	end
