@@ -3020,6 +3020,11 @@ task.spawn(function()
 	magicHealthFrame.Ult.FontFace = gothamFont
 	magicHealthFrame.Ult.TextLabel.FontFace = gothamFont
 
+	local shadowLabel = healthLabel:FindFirstChild("TextLabel")
+	if shadowLabel then
+		shadowLabel:Destroy()
+	end
+
 	local labelStroke = Instance.new("UIStroke")
 	labelStroke.LineJoinMode = Enum.LineJoinMode.Round
 	labelStroke.Color = Color3.new(0, 0, 0)
