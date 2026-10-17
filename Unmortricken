@@ -23,6 +23,7 @@ local GUN_APPEAR_FADE_TIME = 0.8
 
 local TRIGGER_ANIM_IDS = {
 	ATTACK = "10468665991",
+	ATTACK2 = "10466974800",
 	ATTACK3 = "10471336737",
 }
 local DUMMY_FOLDER_NAME = "Live"
@@ -339,6 +340,7 @@ end
 
 local FX = {}
 FX.rng = Random.new()
+FX.releaseAttack2Camera = function() end
 
 function FX.part(parent, shape, color, transparency, size, cframe)
 	local part = Instance.new("Part")
@@ -935,8 +937,8 @@ function FX.reticle(parent, targetRoot)
 	return reticle
 end
 
-function FX.muzzleBurst(owner, origin, direction)
-	local palette = VFX.palette
+function FX.muzzleBurst(owner, origin, direction, paletteOverride)
+	local palette = paletteOverride or VFX.palette
 	local rng = FX.rng
 	local ball = Enum.PartType.Ball
 	local block = Enum.PartType.Block
@@ -1021,8 +1023,8 @@ function FX.muzzleBurst(owner, origin, direction)
 	})
 end
 
-function FX.impact(owner, position, direction, targetModel, ignoreList)
-	local palette = VFX.palette
+function FX.impact(owner, position, direction, targetModel, ignoreList, paletteOverride)
+	local palette = paletteOverride or VFX.palette
 	local ball = Enum.PartType.Ball
 	local block = Enum.PartType.Block
 	local frame = FX.facing(position, direction)
@@ -1393,10 +1395,106 @@ local function getClosestTargetRoot(origin)
 	return closestRoot
 end
 
+function FX.hideCharacter(character)
+	local savedTransparency = {}
+	local savedEnabled = {}
+	local hidden = true
+	local bindName = "RickPrimeHide" .. tostring(os.clock())
+
+	local function apply()
+		if not hidden then
+			return
+		end
+		for _, descendant in ipairs(character:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.LocalTransparencyModifier = 1
+				if savedTransparency[descendant] == nil then
+					savedTransparency[descendant] = descendant.Transparency
+				end
+				descendant.Transparency = 1
+			elseif descendant:IsA("Decal") then
+				if savedTransparency[descendant] == nil then
+					savedTransparency[descendant] = descendant.Transparency
+				end
+				descendant.Transparency = 1
+			elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") or descendant:IsA("Beam") or descendant:IsA("Highlight") then
+				if savedEnabled[descendant] == nil then
+					savedEnabled[descendant] = descendant.Enabled
+				end
+				descendant.Enabled = false
+			end
+		end
+	end
+
+	apply()
+	local heartbeatConnection = RunService.Heartbeat:Connect(apply)
+	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Last.Value, apply)
+
+	return function()
+		if not hidden then
+			return
+		end
+		hidden = false
+		heartbeatConnection:Disconnect()
+		pcall(function()
+			RunService:UnbindFromRenderStep(bindName)
+		end)
+		for instance, originalTransparency in pairs(savedTransparency) do
+			if instance.Parent then
+				instance.Transparency = originalTransparency
+			end
+		end
+		for instance, originalEnabled in pairs(savedEnabled) do
+			if instance.Parent then
+				instance.Enabled = originalEnabled
+			end
+		end
+		for _, descendant in ipairs(character:GetDescendants()) do
+			if descendant:IsA("BasePart") then
+				descendant.LocalTransparencyModifier = 0
+			end
+		end
+	end
+end
+
+function FX.liteMuzzle(owner, origin, direction, palette)
+	local flash = FX.part(owner, Enum.PartType.Ball, palette.hot, 0, Vector3.one * 0.5, CFrame.new(origin))
+	FX.tween(flash, 0.09, { Transparency = 1, Size = Vector3.one * 1.7 }).Completed:Once(function()
+		flash:Destroy()
+	end)
+	local spike = FX.part(owner, Enum.PartType.Block, palette.bright, 0.1, Vector3.new(0.14, 0.14, 3), CFrame.lookAt(origin + direction * 1.5, origin + direction * 3))
+	FX.tween(spike, 0.07, { Transparency = 1, Size = Vector3.new(0.03, 0.03, 6) }).Completed:Once(function()
+		spike:Destroy()
+	end)
+	local proxy = FX.part(owner, Enum.PartType.Block, palette.hot, 1, Vector3.new(0.1, 0.1, 0.1), FX.facing(origin, direction))
+	FX.burst(proxy, 5, { speed = NumberRange.new(20, 55), spread = Vector2.new(22, 22), lifetime = NumberRange.new(0.1, 0.22), size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0) }) })
+	task.delay(0.5, function()
+		proxy:Destroy()
+	end)
+end
+
+function FX.liteImpact(owner, position, direction, palette)
+	local flash = FX.part(owner, Enum.PartType.Ball, palette.hot, 0.1, Vector3.one * 0.6, CFrame.new(position))
+	FX.tween(flash, 0.12, { Transparency = 1, Size = Vector3.one * 3.4 }).Completed:Once(function()
+		flash:Destroy()
+	end)
+	local proxy = FX.part(owner, Enum.PartType.Block, palette.hot, 1, Vector3.new(0.1, 0.1, 0.1), FX.facing(position, -direction))
+	FX.burst(proxy, 8, { speed = NumberRange.new(14, 40), spread = Vector2.new(70, 70), lifetime = NumberRange.new(0.12, 0.28), size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 0) }) })
+	task.delay(0.5, function()
+		proxy:Destroy()
+	end)
+end
+
 local RIPPLE_DISTANCES = { 2, 4.6, 7.8, 11.8 }
 
 local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
-	local palette = VFX.palette
+	local palette = context.palette or VFX.palette
+	local widthMul = context.widthScale or 1
+	local travelTime = context.travelTime or BEAM_TRAVEL_TIME
+	local holdTime = context.holdTime or BEAM_HOLD
+	local fadeTime = context.fadeTime or BEAM_FADE_TIME
+	local aimOffset = context.aimOffset or Vector3.zero
+	local rippleList = context.lite and {} or RIPPLE_DISTANCES
 	local muzzlePlug = gunModel.Parent and gunModel:FindFirstChild("MuzzlePlug")
 	if not muzzlePlug then
 		onFinished()
@@ -1419,16 +1517,21 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 	local fallbackTarget = startOrigin + muzzlePlug.CFrame.RightVector * BEAM_FALLBACK_RANGE
 	local function getTargetPosition()
 		if targetRoot and targetRoot.Parent then
-			return targetRoot.Position
+			return targetRoot.Position + aimOffset
 		end
-		return fallbackTarget
+		return fallbackTarget + aimOffset
 	end
 	local firstOffset = getTargetPosition() - startOrigin
 	local fireDirection = firstOffset.Magnitude > 0.1 and firstOffset.Unit or muzzlePlug.CFrame.RightVector
 
 	local blastOk, blastError = pcall(function()
+		if context.minimal then return end
 		FX.sound(VFX.sounds.fire, folder)
-		FX.muzzleBurst(stage, startOrigin, fireDirection)
+		if context.lite then
+			FX.liteMuzzle(stage, startOrigin, fireDirection, palette)
+			return
+		end
+		FX.muzzleBurst(stage, startOrigin, fireDirection, context.palette)
 		local feetHit = context.feetPosition and FX.floorAt(context.feetPosition, context.ignore)
 		if feetHit then
 			local floorFrame = FX.facing(feetHit.Position + feetHit.Normal * 0.12, feetHit.Normal)
@@ -1457,7 +1560,7 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 			ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
 		}),
 		0.05,
-		1.1,
+		1.1 * widthMul,
 		NumberSequence.new({
 			NumberSequenceKeypoint.new(0, 1),
 			NumberSequenceKeypoint.new(0.35, 0.3),
@@ -1468,6 +1571,11 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 	local headBall = FX.part(folder, ball, Color3.new(1, 1, 1), 0, Vector3.one * 0.55, CFrame.new(startOrigin))
 	local muzzleBall = FX.part(folder, ball, palette.bright, 0.1, Vector3.one * 0.9, CFrame.new(startOrigin))
 	local targetBall = FX.part(folder, ball, palette.red, 1, Vector3.one * 0.5, CFrame.new(startOrigin))
+	if context.minimal then
+		headBall:Destroy()
+		muzzleBall:Destroy()
+		targetBall:Destroy()
+	end
 
 	local startedAt = os.clock()
 	local arrivedAt
@@ -1494,7 +1602,7 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 		local totalDistance = math.max(offset.Magnitude, 0.1)
 		local direction = offset.Magnitude > 0.1 and offset.Unit or muzzleCFrame.RightVector
 
-		local speed = totalDistance / BEAM_TRAVEL_TIME
+		local speed = totalDistance / travelTime
 		local travelled = speed * elapsed
 		local headDistance = math.min(travelled, totalDistance)
 		local cometLength = math.min(VFX.cometLength, totalDistance * 0.7)
@@ -1503,8 +1611,13 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 		if not arrivedAt and headDistance >= totalDistance then
 			arrivedAt = elapsed
 			local impactOk, impactError = pcall(function()
+				if context.minimal then return end
 				FX.sound(VFX.sounds.impact, folder)
-				FX.impact(stage, targetPosition, direction, targetRoot and targetRoot.Parent, context.ignore)
+				if context.lite then
+					FX.liteImpact(stage, targetPosition, direction, palette)
+					return
+				end
+				FX.impact(stage, targetPosition, direction, targetRoot and targetRoot.Parent, context.ignore, context.palette)
 			end)
 			if not impactOk then
 				warn("[RickPrimeGun] impact error:", impactError)
@@ -1514,7 +1627,7 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 			end
 		end
 
-		local collapse = arrivedAt and math.clamp((elapsed - arrivedAt) / (BEAM_HOLD + BEAM_FADE_TIME), 0, 1) or 0
+		local collapse = arrivedAt and math.clamp((elapsed - arrivedAt) / (holdTime + fadeTime), 0, 1) or 0
 		if collapse >= 1 then
 			cleanup()
 			onFinished()
@@ -1524,14 +1637,14 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 		local punch = 1 + 1.4 * math.exp(-elapsed * 22)
 		local flutter = arrivedAt and (1 + 0.12 * math.sin(elapsed * 85) + 0.08 * math.sin(elapsed * 133)) or 1
 		local scale = (1 - collapse) ^ 1.6 * flutter * punch
-		auraBeam.Width0 = 1.5 * scale
-		auraBeam.Width1 = 0.5 * scale
+		auraBeam.Width0 = 1.5 * scale * widthMul
+		auraBeam.Width1 = 0.5 * scale * widthMul
 		auraBeam.Transparency = NumberSequence.new(0.78 + 0.22 * collapse ^ 2)
-		glowBeam.Width0 = 0.62 * scale
-		glowBeam.Width1 = 0.24 * scale
+		glowBeam.Width0 = 0.62 * scale * widthMul
+		glowBeam.Width1 = 0.24 * scale * widthMul
 		glowBeam.Transparency = NumberSequence.new(0.1 + 0.9 * collapse ^ 2)
-		coreBeam.Width0 = 0.24 * scale
-		coreBeam.Width1 = 0.1 * scale
+		coreBeam.Width0 = 0.24 * scale * widthMul
+		coreBeam.Width1 = 0.1 * scale * widthMul
 		coreBeam.Transparency = NumberSequence.new(collapse ^ 3)
 
 		local headPosition = origin + direction * headDistance
@@ -1542,18 +1655,18 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 
 		local headFade = arrivedAt and math.clamp((elapsed - arrivedAt) / 0.06, 0, 1) or 0
 		headBall.CFrame = CFrame.new(headPosition)
-		headBall.Size = Vector3.one * 0.55 * (1 - headFade * 0.5)
+		headBall.Size = Vector3.one * 0.55 * widthMul * (1 - headFade * 0.5)
 		headBall.Transparency = headFade
 		muzzleBall.CFrame = CFrame.new(origin)
-		muzzleBall.Size = Vector3.one * (0.05 + 0.9 * (1 - collapse) ^ 2 * flutter)
+		muzzleBall.Size = Vector3.one * (0.05 + 0.9 * widthMul * (1 - collapse) ^ 2 * flutter)
 		muzzleBall.Transparency = 0.1 + 0.9 * collapse
 		if arrivedAt then
 			targetBall.CFrame = CFrame.new(targetPosition)
-			targetBall.Size = Vector3.one * (0.05 + 1.8 * (1 - collapse) ^ 2 * flutter)
+			targetBall.Size = Vector3.one * (0.05 + 1.8 * widthMul * (1 - collapse) ^ 2 * flutter)
 			targetBall.Transparency = 0.15 + 0.85 * collapse
 		end
 
-		for index, distance in ipairs(RIPPLE_DISTANCES) do
+		for index, distance in ipairs(rippleList) do
 			if not rippleSpawned[index] and elapsed >= (index - 1) * 0.028 and distance < totalDistance * 0.85 then
 				rippleSpawned[index] = true
 				FX.shockRing(folder, FX.facing(origin + direction * distance, direction), {
@@ -1569,6 +1682,8 @@ local function fireBeam(gunModel, onFinished, lockedTargetRoot, context)
 		end
 	end)
 end
+
+local droneFire
 
 local function runSequence(character, onFinished)
 	local humanoid = character:WaitForChild("Humanoid")
@@ -1612,6 +1727,7 @@ local function runSequence(character, onFinished)
 	clone.Parent = workspace
 	clone:PivotTo(rootPart.CFrame)
 
+	pcall(FX.releaseAttack2Camera)
 	local camera = workspace.CurrentCamera
 	local savedCameraType = camera.CameraType
 	camera.CameraType = Enum.CameraType.Scriptable
@@ -1895,6 +2011,9 @@ local function runSequence(character, onFinished)
 		cameraRig.fire()
 		pcall(screenFx.fire)
 		fireBeam(gunModel, finishSequence, targetRoot, shotContext)
+		if droneFire then
+			pcall(droneFire, targetRoot, shotContext)
+		end
 	end)
 	task.delay(CLONE_LIFETIME, returnToPlayer)
 
@@ -1914,6 +2033,13 @@ local ELEC = {
 	cyan = Color3.fromRGB(110, 225, 255),
 	blue = Color3.fromRGB(30, 140, 255),
 	deep = Color3.fromRGB(8, 40, 200),
+}
+local DRONE_BLUE = {
+	hot = Color3.fromRGB(238, 246, 255),
+	bright = Color3.fromRGB(110, 205, 255),
+	red = Color3.fromRGB(45, 140, 255),
+	deep = Color3.fromRGB(10, 46, 170),
+	tint = Color3.fromRGB(214, 228, 255),
 }
 local ELEC_SEQ = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, ELEC.white),
@@ -2288,6 +2414,7 @@ local function pressKeyOne()
 end
 
 local function runAttack3(character, animator, onDone)
+	pcall(FX.releaseAttack2Camera)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	local camera = workspace.CurrentCamera
 	local legs = {
@@ -2688,6 +2815,9 @@ local function runAttack3(character, animator, onDone)
 		FX.tween(blur, 0.45, { Size = 0 })
 
 		resolveHitbox()
+		if droneFire then
+			pcall(droneFire, hitTarget or zapRoot, { stage = fxFolder, ignore = ignore }, DRONE_BLUE)
+		end
 		if stopFollow then
 			stopFollow()
 			stopFollow = nil
@@ -3056,4 +3186,1479 @@ task.spawn(function()
 			task.wait(BAR_TEXT_HOLD_TIME)
 		end
 	end
+end)
+
+task.spawn(function()
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local player = Players.LocalPlayer
+
+local CONFIG = {
+	Side       = 4.5,
+	Back       = 3.5,
+	Height     = 2.5,
+	FloatAmp   = 0.35,
+	FloatSpeed = 1.6,
+	Follow     = 12,
+	Scale    = 1,
+	Collide  = false,
+	Detail   = 5,
+	EyeLight = false,
+}
+
+local BEND_MIN, BEND_MAX = -0.12, 0.25
+
+local C = {
+	Plate     = Color3.fromRGB(196, 233, 240),
+	Wing      = Color3.fromRGB(147, 196, 200),
+	Lower     = Color3.fromRGB(76, 133, 144),
+	FinHi     = Color3.fromRGB(113, 213, 217),
+	Housing   = Color3.fromRGB(96, 44, 44),
+	HousingIn = Color3.fromRGB(130, 66, 64),
+	Red       = Color3.fromRGB(247, 84, 61),
+	Core      = Color3.fromRGB(255, 218, 120),
+	DotOuter  = Color3.fromRGB(30, 125, 215),
+	DotInner  = Color3.fromRGB(90, 240, 215),
+	Cyan      = Color3.fromRGB(81, 221, 222),
+	CyanTop   = Color3.fromRGB(42, 117, 170),
+	Line      = Color3.fromRGB(120, 165, 185),
+}
+local PLASTIC = Enum.Material.SmoothPlastic
+local NEON = Enum.Material.Neon
+
+local PLATE = {
+	{ 0.00, 2.81, 0    },
+	{ 0.33, 3.05, 0.35 },
+	{ 0.44, 4.14, 0    },
+	{ 0.85, 3.98, 0    },
+	{ 0.955, 2.34, 0   },
+	{ 0.88, 2.11, 0, 0.04 },
+	{ 0.32, 1.24, 0.6  },
+	{ 0.33, 0.59, 0    },
+	{ 0.00, 0.59, 0    },
+}
+
+local WINGS = {
+	{ 0.90, 2.14, 0 },
+	{ 1.30, 1.20, 1.0 },
+	{ 1.90, 1.82, 0 },
+	{ 2.19, 1.45, 0 },
+	{ 0.94, -0.22, 0 },
+	{ 0.55, 0.25, 0 },
+	{ 0.50, 1.80, 0 },
+}
+
+local LOWER = {
+	{ 0.00, 0.05, 0 },
+	{ 1.00, 0.05, 0 },
+	{ 2.15, -0.57, 0 },
+	{ 1.82, -1.05, 0 },
+	{ 0.80, -0.94, 0 },
+	{ 0.72, -1.69, 0 },
+	{ 0.33, -2.05, 0 },
+	{ 0.28, -1.00, 0 },
+	{ 0.00, -1.00, 0 },
+}
+
+local SHAPES = {
+	Plate = { z = 0.00, depth = 0.50, color = C.Plate, mode = "outline", points = PLATE },
+	Wings = { z = 0.12, depth = 0.35, color = C.Wing,  mode = "pair",    points = WINGS },
+	Lower = { z = 0.25, depth = 0.35, color = C.Lower, mode = "outline", points = LOWER },
+}
+local ORDER = { "Plate", "Wings", "Lower" }
+
+local state = {}
+local globalState = { curve = 0, bend = 0 }
+
+local DEFAULTS = {
+	Plate = { curve = 0.21,  bend = 0, depth = 0.50 },
+	Wings = { curve = -0.61, bend = 0, depth = 0.35 },
+	Lower = { curve = 0.18,  bend = 0, depth = 0.35 },
+}
+
+local function resetState()
+	for _, name in ipairs(ORDER) do
+		local d = DEFAULTS[name]
+		state[name] = { curve = d.curve, bend = d.bend, depth = d.depth }
+	end
+	globalState.curve = 0
+	globalState.bend = 0
+end
+resetState()
+
+local Geo = {}
+
+function Geo.mirrorOutline(right)
+	local n = #right
+	local out = {}
+	for i = 1, n do
+		local p = right[i]
+		out[i] = { p[1], p[2], p[3] or 0, p[4] or 0 }
+	end
+	local prev = right[n - 1]
+	out[n][4] = (prev and prev[4]) or 0
+	for i = n - 1, 2, -1 do
+		local p, before = right[i], right[i - 1]
+		out[#out + 1] = { -p[1], p[2], p[3] or 0, before[4] or 0 }
+	end
+	return out
+end
+
+function Geo.flipX(points)
+	local out = {}
+	for i, p in ipairs(points) do
+		out[i] = { -p[1], p[2], p[3] or 0, p[4] or 0 }
+	end
+	return out
+end
+
+function Geo.tessellate(points, curve, bend, detail)
+	local n = #points
+	local P, R, B = {}, {}, {}
+	for i = 1, n do
+		local p = points[i]
+		P[i] = Vector2.new(p[1], p[2])
+		R[i] = p[3] or 0
+		B[i] = p[4] or 0
+	end
+
+	local area = 0
+	for i = 1, n do
+		local a, b = P[i], P[i % n + 1]
+		area = area + (a.X * b.Y - b.X * a.Y)
+	end
+	local sgn = (area >= 0) and 1 or -1
+
+	local function effR(r)
+		local c = math.clamp(curve, -1, 1)
+		local v
+		if c < 0 then v = r * (1 + c) else v = r + (1 - r) * c end
+		return math.clamp(v, 0, 1)
+	end
+
+	local t = {}
+	for i = 1, n do
+		local a, v, c = P[(i - 2) % n + 1], P[i], P[i % n + 1]
+		local da, dc = a - v, c - v
+		local la, lc = da.Magnitude, dc.Magnitude
+		local straight = math.abs(da.X * dc.Y - da.Y * dc.X) < 1e-5 * la * lc
+		if straight then
+			t[i] = 0
+		else
+			t[i] = effR(R[i]) * 0.5 * math.min(la, lc)
+		end
+	end
+
+	local out = {}
+	local function push(v)
+		local last = out[#out]
+		if not last or (v - last).Magnitude > 1e-5 then
+			out[#out + 1] = v
+		end
+	end
+	local function quad(p0, c, p2, k, m)
+		local u = k / m
+		local w = 1 - u
+		return p0 * (w * w) + c * (2 * w * u) + p2 * (u * u)
+	end
+
+	for i = 1, n do
+		local a, v, c = P[(i - 2) % n + 1], P[i], P[i % n + 1]
+		if t[i] > 1e-6 then
+			local e0 = v + (a - v).Unit * t[i]
+			local s1 = v + (c - v).Unit * t[i]
+			for k = 0, detail do
+				push(quad(e0, v, s1, k, detail))
+			end
+		else
+			push(v)
+		end
+
+		local j = i % n + 1
+		local d = P[j] - P[i]
+		local dn = d.Unit
+		local S = P[i] + dn * t[i]
+		local E = P[j] - dn * t[j]
+		local bb = B[i] + bend
+		local chord = (E - S).Magnitude
+		if math.abs(bb) > 1e-5 and chord > 1e-5 then
+			local mid = (S + E) / 2
+			local nrm = Vector2.new(dn.Y, -dn.X) * sgn
+			local ctrl = mid + nrm * (2 * bb * chord)
+			for k = 1, detail - 1 do
+				push(quad(S, ctrl, E, k, detail))
+			end
+		end
+	end
+
+	if #out > 1 and (out[1] - out[#out]).Magnitude <= 1e-5 then
+		out[#out] = nil
+	end
+	return out
+end
+
+function Geo.triangulate(poly)
+	local n = #poly
+	local tris = {}
+	if n < 3 then return tris end
+
+	local idx = {}
+	for i = 1, n do idx[i] = i end
+
+	local area = 0
+	for i = 1, n do
+		local a, b = poly[i], poly[i % n + 1]
+		area = area + (a.X * b.Y - b.X * a.Y)
+	end
+	if area < 0 then
+		for i = 1, math.floor(n / 2) do
+			idx[i], idx[n - i + 1] = idx[n - i + 1], idx[i]
+		end
+	end
+
+	local function cross(o, a, b)
+		return (a.X - o.X) * (b.Y - o.Y) - (a.Y - o.Y) * (b.X - o.X)
+	end
+	local function inside(p, a, b, c)
+		return cross(a, b, p) >= -1e-9 and cross(b, c, p) >= -1e-9 and cross(c, a, p) >= -1e-9
+	end
+
+	local guard = 0
+	while #idx > 3 and guard < 5000 do
+		guard = guard + 1
+		local m = #idx
+		local clipAt = nil
+		local bestCross, bestK = -math.huge, 1
+
+		for k = 1, m do
+			local ia, ib, ic = idx[(k - 2) % m + 1], idx[k], idx[k % m + 1]
+			local a, b, c = poly[ia], poly[ib], poly[ic]
+			local cr = cross(a, b, c)
+			if cr > bestCross then
+				bestCross, bestK = cr, k
+			end
+			if cr > 1e-9 then
+				local ok = true
+				for j = 1, m do
+					local ij = idx[j]
+					if ij ~= ia and ij ~= ib and ij ~= ic and inside(poly[ij], a, b, c) then
+						ok = false
+						break
+					end
+				end
+				if ok then
+					clipAt = k
+					break
+				end
+			end
+		end
+
+		if not clipAt then clipAt = bestK end
+
+		local ia, ib, ic = idx[(clipAt - 2) % m + 1], idx[clipAt], idx[clipAt % m + 1]
+		if cross(poly[ia], poly[ib], poly[ic]) > 1e-12 then
+			tris[#tris + 1] = { ia, ib, ic }
+		end
+		table.remove(idx, clipAt)
+	end
+	if #idx == 3 then
+		tris[#tris + 1] = { idx[1], idx[2], idx[3] }
+	end
+	return tris
+end
+
+local function makeBuilder(model)
+	local B = {}
+
+	local function finish(p, name, color, material, solid)
+		p.Name = name
+		p.Color = color
+		p.Material = material
+		p.Anchored = true
+		p.CanCollide = solid and CONFIG.Collide or false
+		if material == NEON then p.CastShadow = false end
+		p.Parent = model
+		return p
+	end
+
+	function B.block(name, size, pos, color, material)
+		local k = CONFIG.Scale
+		local p = Instance.new("Part")
+		p.Size = size * k
+		p.CFrame = CFrame.new(pos * k)
+		return finish(p, name, color, material, false)
+	end
+
+	function B.bar(name, p1, p2, width, depth, z, color, material)
+		local k = CONFIG.Scale
+		local d = p2 - p1
+		local len = d.Magnitude
+		local mid = (p1 + p2) / 2
+		local angle = math.atan2(-d.X, d.Y)
+		local p = Instance.new("Part")
+		p.Size = Vector3.new(width, len, depth) * k
+		p.CFrame = CFrame.new(mid.X * k, mid.Y * k, z * k) * CFrame.Angles(0, 0, angle)
+		return finish(p, name, color, material, false)
+	end
+
+	function B.disc(name, w, h, depth, pos, color, material)
+		local k = CONFIG.Scale
+		local p = Instance.new("Part")
+		p.Shape = Enum.PartType.Cylinder
+		p.Size = Vector3.new(depth, h, w) * k
+		p.CFrame = CFrame.new(pos * k) * CFrame.Angles(0, math.rad(90), 0)
+		return finish(p, name, color, material, false)
+	end
+
+	function B.ball(name, d, pos, color, material)
+		local k = CONFIG.Scale
+		local p = Instance.new("Part")
+		p.Shape = Enum.PartType.Ball
+		p.Size = Vector3.new(d, d, d) * k
+		p.CFrame = CFrame.new(pos * k)
+		return finish(p, name, color, material, false)
+	end
+
+	local function triangle(name, a, b, c, thickness, color, material)
+		local k = CONFIG.Scale
+		a, b, c = a * k, b * k, c * k
+		local t = thickness * k
+
+		local ab, ac, bc = b - a, c - a, c - b
+		if ab:Cross(ac).Magnitude < 1e-6 then return end
+
+		local abd, acd, bcd = ab:Dot(ab), ac:Dot(ac), bc:Dot(bc)
+		if abd > acd and abd > bcd then
+			c, a = a, c
+		elseif acd > bcd and acd > abd then
+			a, b = b, a
+		end
+		ab, ac, bc = b - a, c - a, c - b
+
+		local right = ac:Cross(ab).Unit
+		local up = bc:Cross(right).Unit
+		local back = bc.Unit
+		local height = math.abs(ab:Dot(up))
+
+		local w1 = Instance.new("WedgePart")
+		w1.Size = Vector3.new(t, height, math.abs(ab:Dot(back)))
+		w1.CFrame = CFrame.fromMatrix((a + b) / 2, right, up, back)
+		finish(w1, name, color, material, true)
+
+		local w2 = Instance.new("WedgePart")
+		w2.Size = Vector3.new(t, height, math.abs(ac:Dot(back)))
+		w2.CFrame = CFrame.fromMatrix((a + c) / 2, -right, up, -back)
+		finish(w2, name, color, material, true)
+	end
+
+	function B.polygon(name, poly, z, thickness, color, material)
+		local tris = Geo.triangulate(poly)
+		for _, t in ipairs(tris) do
+			local a, b, c = poly[t[1]], poly[t[2]], poly[t[3]]
+			triangle(name,
+				Vector3.new(a.X, a.Y, z),
+				Vector3.new(b.X, b.Y, z),
+				Vector3.new(c.X, c.Y, z),
+				thickness, color, material)
+		end
+	end
+
+	return B
+end
+
+for _, n in ipairs({ "RickPrimeKillbot", "RickPrimeKillbotL", "RickPrimeKillbotR" }) do
+	local old = workspace:FindFirstChild(n)
+	if old then old:Destroy() end
+end
+
+local bot = Instance.new("Model")
+bot.Name = "RickPrimeKillbot"
+local botCF = CFrame.new()
+
+local function buildShape(name)
+	local def, st = SHAPES[name], state[name]
+	local model = Instance.new("Model")
+	model.Name = name
+	local b = makeBuilder(model)
+
+	local curve = math.clamp(st.curve + globalState.curve, -1, 1)
+	local bend = math.clamp(st.bend + globalState.bend, BEND_MIN, BEND_MAX)
+
+	local polys = {}
+	if def.mode == "outline" then
+		polys[1] = Geo.tessellate(Geo.mirrorOutline(def.points), curve, bend, CONFIG.Detail)
+	else
+		polys[1] = Geo.tessellate(def.points, curve, bend, CONFIG.Detail)
+		polys[2] = Geo.tessellate(Geo.flipX(def.points), curve, bend, CONFIG.Detail)
+	end
+	for _, poly in ipairs(polys) do
+		b.polygon(name, poly, def.z, st.depth, def.color, PLASTIC)
+	end
+	return model
+end
+
+local function buildDetails()
+	local model = Instance.new("Model")
+	model.Name = "Details"
+	local b = makeBuilder(model)
+	local pf = SHAPES.Plate.z - state.Plate.depth / 2
+
+	b.bar("SpineLine", Vector3.new(0, 2.78, 0), Vector3.new(0, 0.62, 0),
+		0.04, 0.03, pf - 0.012, C.Line, PLASTIC)
+	b.ball("BlueLight", 0.34, Vector3.new(0, 1.44, pf - 0.02), C.DotOuter, NEON)
+	b.ball("BlueLightCore", 0.16, Vector3.new(0, 1.44, pf - 0.075), C.DotInner, NEON)
+
+	b.disc("EyeHousing", 1.64, 1.64, 0.14, Vector3.new(0, -0.15, 0.085), C.Housing, PLASTIC)
+	b.disc("EyeHousingInner", 1.40, 1.40, 0.06, Vector3.new(0, -0.15, 0.03), C.HousingIn, PLASTIC)
+	local glow = b.disc("EyeGlow", 1.16, 1.16, 0.05, Vector3.new(0, 0, -0.065), C.Red, NEON)
+	b.disc("EyeCore", 0.67, 0.38, 0.05, Vector3.new(0, 0, -0.09), C.Core, NEON)
+
+	if CONFIG.EyeLight then
+		local light = Instance.new("PointLight")
+		light.Color = C.Red
+		light.Range = 8 * CONFIG.Scale
+		light.Brightness = 1.2
+		light.Parent = glow
+	end
+
+	b.block("TailLight", Vector3.new(0.58, 0.34, 0.09), Vector3.new(0, -1.20, 0.025), C.Cyan, NEON)
+	b.block("TailLightTop", Vector3.new(0.62, 0.08, 0.10), Vector3.new(0, -1.03, 0.02), C.CyanTop, PLASTIC)
+
+	for _, s in ipairs({ 1, -1 }) do
+		b.bar("FinHighlight",
+			Vector3.new(s * 2.103, -0.658, 0), Vector3.new(s * 0.953, -0.026, 0),
+			0.20, 0.04, 0.06, C.FinHi, PLASTIC)
+	end
+	return model
+end
+
+local function mount(model)
+	model.WorldPivot = CFrame.new()
+	model:PivotTo(botCF)
+	local hl = Instance.new("Highlight")
+	hl.FillTransparency = 1
+	hl.OutlineTransparency = 0
+	hl.OutlineColor = Color3.new(0, 0, 0)
+	hl.DepthMode = Enum.HighlightDepthMode.Occluded
+	hl.Parent = model
+	model.Parent = bot
+end
+
+local function rebuild(name)
+	local prev = bot:FindFirstChild(name)
+	if prev then prev:Destroy() end
+	if name == "Details" then
+		mount(buildDetails())
+	else
+		mount(buildShape(name))
+	end
+end
+
+local dirty = {}
+local lastBuild = 0
+local function markDirty(name) dirty[name] = true end
+local function markAll()
+	for _, n in ipairs(ORDER) do dirty[n] = true end
+	dirty.Details = true
+end
+
+RunService.Heartbeat:Connect(function()
+	if next(dirty) == nil or os.clock() - lastBuild < 0.07 then return end
+	lastBuild = os.clock()
+	local todo = dirty
+	dirty = {}
+	for name in pairs(todo) do rebuild(name) end
+end)
+
+for _, name in ipairs(ORDER) do rebuild(name) end
+rebuild("Details")
+bot.WorldPivot = CFrame.new()
+
+local second = bot:Clone()
+bot.Name = "RickPrimeKillbotL"
+second.Name = "RickPrimeKillbotR"
+
+local rigs = {
+	{ model = bot,    side = -1, phase = 0 },
+	{ model = second, side = 1,  phase = 2.1 },
+}
+
+droneFire = function(targetRoot, ctx, palette)
+	palette = palette or VFX.palette
+	local shooters = rigs
+	if ctx.side then
+		shooters = {}
+		for _, r in ipairs(rigs) do
+			if r.side == ctx.side then
+				table.insert(shooters, r)
+			end
+		end
+	end
+	for _, r in ipairs(shooters) do
+		local gun = Instance.new("Model")
+		gun.Name = "RickPrimeDroneGun"
+		local function makePart(name, color, transparency)
+			local part = Instance.new("Part")
+			part.Name = name
+			part.Color = color
+			part.Transparency = transparency
+			part.Material = Enum.Material.Neon
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanQuery = false
+			part.CanTouch = false
+			part.CastShadow = false
+			part.Size = Vector3.one * 0.1
+			part.Parent = gun
+			return part
+		end
+		local muzzle = makePart("MuzzlePlug", Color3.new(1, 1, 1), 1)
+		local body = makePart("BeamBody", palette.hot, 0)
+		body.Shape = Enum.PartType.Cylinder
+		local glow = makePart("BeamGlow", palette.bright, 0.55)
+		glow.Shape = Enum.PartType.Cylinder
+		gun.Parent = workspace
+
+		local t0 = os.clock()
+		local arrivedAt
+		local conn
+		local function update()
+			if not gun.Parent then
+				conn:Disconnect()
+				return
+			end
+			local pivot = r.model:GetPivot()
+			local pos = (pivot * CFrame.new(0, 0, -0.3)).Position
+			local aim = pivot.LookVector
+			if targetRoot and targetRoot.Parent then
+				local toTarget = targetRoot.Position - pos
+				if toTarget.Magnitude > 0.01 then aim = toTarget end
+			end
+			muzzle.CFrame = CFrame.lookAt(pos, pos + aim) * CFrame.Angles(0, math.rad(90), 0)
+
+			local rot = muzzle.CFrame.Rotation
+			local dir = muzzle.CFrame.RightVector
+			local eye = (pivot * CFrame.new(0, 0, -0.09)).Position
+			local total = math.max(((targetRoot and targetRoot.Parent and targetRoot.Position or pos + aim * BEAM_FALLBACK_RANGE) - eye).Magnitude, 0.1)
+			local elapsed = os.clock() - t0
+			local head = math.min(total / BEAM_TRAVEL_TIME * elapsed, total)
+			if not arrivedAt and head >= total then
+				arrivedAt = elapsed
+			end
+			local collapse = arrivedAt and math.clamp((elapsed - arrivedAt) / (BEAM_HOLD + BEAM_FADE_TIME), 0, 1) or 0
+			local k = math.max((1 - collapse) ^ 1.6, 0.001)
+			local len = math.max(head, 0.05)
+			local center = CFrame.new(eye + dir * len / 2) * rot
+			body.Size = Vector3.new(len, 0.38 * k, 0.67 * k)
+			body.CFrame = center
+			glow.Size = Vector3.new(len, 0.38 * k * 1.7, 0.67 * k * 1.7)
+			glow.CFrame = center
+		end
+		update()
+		conn = RunService.PreRender:Connect(update)
+		fireBeam(gun, function()
+			conn:Disconnect()
+			gun:Destroy()
+		end, targetRoot, { stage = ctx.stage, ignore = ctx.ignore, palette = palette, minimal = ctx.minimal })
+	end
+end
+
+local COMBO_ANIMS = {
+	["rbxassetid://10469493270"] = "rbxassetid://17889458563",
+	["rbxassetid://10469630950"] = "rbxassetid://13370310513",
+	["rbxassetid://10469639222"] = "rbxassetid://15162694192",
+	["rbxassetid://10469643643"] = "rbxassetid://80488470577181",
+}
+local GUN_BEAM_COMBO_IDS = {
+	["rbxassetid://10469643643"] = true,
+}
+local COMBO_SIDE = {
+	["rbxassetid://10469493270"] = -1,
+	["rbxassetid://10469630950"] = 1,
+	["rbxassetid://10469639222"] = -1,
+	["rbxassetid://10469643643"] = -1,
+}
+local DRONE_HIT_DELAY = 0.3
+local GUN_SHAKE_DURATION = 0.25
+local DRONE_SHAKE_DURATION = 0.2
+local DRONE_BEAM_TRAVEL_TIME = 0.04
+local DRONE_BEAM_HOLD_TIME = 0.05
+local DRONE_BEAM_COLLAPSE_TIME = 0.14
+local ownTracks = setmetatable({}, { __mode = "k" })
+
+function FX.comboFlash(parent, position, aimPosition, color, size, fadeTime)
+	local flashPart = Instance.new("Part")
+	flashPart.Name = "RickPrimeComboFlash"
+	flashPart.Size = Vector3.one * 0.1
+	flashPart.Anchored = true
+	flashPart.CanCollide = false
+	flashPart.CanQuery = false
+	flashPart.CanTouch = false
+	flashPart.CastShadow = false
+	flashPart.Transparency = 1
+	if aimPosition and (aimPosition - position).Magnitude > 0.01 then
+		flashPart.CFrame = CFrame.lookAt(position, aimPosition)
+	else
+		flashPart.CFrame = CFrame.new(position)
+	end
+	flashPart.Parent = parent
+
+	local flashLight = Instance.new("SpotLight")
+	flashLight.Color = color
+	flashLight.Angle = 180
+	flashLight.Range = size
+	flashLight.Brightness = 10
+	flashLight.Shadows = false
+	flashLight.Parent = flashPart
+
+	local fadeInfo = TweenInfo.new(fadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(flashLight, fadeInfo, { Brightness = 0 }):Play()
+	Debris:AddItem(flashPart, fadeTime + 0.1)
+end
+
+function FX.comboShake(duration)
+	local rollSign = FX.rng:NextNumber() < 0.5 and -1 or 1
+	local bindName = "RickPrimeComboShake" .. tostring(os.clock())
+	local kicks = {}
+	local shake = {}
+
+	local function addKick(strength, roll)
+		table.insert(kicks, { time = os.clock(), strength = strength, roll = roll })
+	end
+
+	function shake.fire()
+		addKick(1, rollSign)
+	end
+
+	function shake.impact()
+		addKick(0.6, -rollSign)
+	end
+
+	local function jitter(amount)
+		return (math.random() - 0.5) * 2 * amount
+	end
+
+	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Camera.Value + 1, function()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local now = os.clock()
+		local kickBack, kickRoll, kickShake = 0, 0, 0
+		for _, kick in ipairs(kicks) do
+			local age = now - kick.time
+			if age < duration then
+				local fade = 1 - age / duration
+				local decay = math.exp(-age * VFX.kickDecay) * fade
+				kickBack += kick.strength * decay * math.cos(age * VFX.kickFreq)
+				kickRoll += kick.strength * kick.roll * decay * math.cos(age * VFX.kickFreq * 0.55)
+				kickShake += kick.strength * fade ^ SHAKE_FALLOFF
+			end
+		end
+		if kickShake == 0 then return end
+		local jitterPosition = SHAKE_POSITION * kickShake
+		local jitterRotation = SHAKE_ROTATION * kickShake
+		camera.CFrame = camera.CFrame
+			* CFrame.new(jitter(jitterPosition), jitter(jitterPosition), kickBack * VFX.kickBack)
+			* CFrame.Angles(jitter(jitterRotation), jitter(jitterRotation), kickRoll * VFX.kickRoll + jitter(jitterRotation))
+	end)
+
+	task.delay(duration + BEAM_TRAVEL_TIME + 0.5, function()
+		pcall(function()
+			RunService:UnbindFromRenderStep(bindName)
+		end)
+	end)
+
+	return shake
+end
+
+function FX.m1Shake(duration, side)
+	local noiseSeed = FX.rng:NextNumber(1, 90)
+	local startedAt = os.clock()
+	local bindName = "RickPrimeM1Shake" .. tostring(startedAt)
+
+	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Camera.Value + 1, function()
+		local camera = workspace.CurrentCamera
+		local age = os.clock() - startedAt
+		if not camera or age >= duration then
+			RunService:UnbindFromRenderStep(bindName)
+			return
+		end
+
+		local falloff = (1 - age / duration) ^ 2
+		local punch = math.exp(-age * 30)
+		local function smoothNoise(offset)
+			return math.noise(age * 48, noiseSeed, offset) * 2
+		end
+
+		camera.CFrame = camera.CFrame
+			* CFrame.new(
+				smoothNoise(0.13) * 0.14 * falloff,
+				smoothNoise(0.37) * 0.14 * falloff,
+				0.32 * punch
+			)
+			* CFrame.Angles(
+				math.rad(1.3) * punch + smoothNoise(0.61) * math.rad(0.6) * falloff,
+				smoothNoise(0.83) * math.rad(0.6) * falloff,
+				side * math.rad(1.6) * punch + smoothNoise(0.97) * math.rad(0.5) * falloff
+			)
+	end)
+end
+
+local function findDroneRig(side)
+	for _, rig in ipairs(rigs) do
+		if rig.side == side then
+			return rig
+		end
+	end
+end
+
+local function chargeDroneM1(side, targetRoot, shotStage, duration)
+	local shooter = findDroneRig(side)
+	if not shooter or not targetRoot or not targetRoot.Parent then
+		return
+	end
+
+	local palette = VFX.palette
+	local fullTurn = math.pi * 2
+	local streakCycleTime = 0.14
+	local ringCycleTime = 0.16
+	local lastTargetPosition = targetRoot.Position
+
+	local function getMuzzleFrame()
+		local pivot = shooter.model:GetPivot()
+		local muzzlePosition = (pivot * CFrame.new(0, 0, -0.09)).Position
+		if targetRoot.Parent then
+			lastTargetPosition = targetRoot.Position
+		end
+		local offset = lastTargetPosition - muzzlePosition
+		if offset.Magnitude < 0.1 then
+			return pivot.Rotation + muzzlePosition
+		end
+		return CFrame.lookAt(muzzlePosition, muzzlePosition + offset.Unit)
+	end
+
+	local startFrame = getMuzzleFrame()
+	local chargeCore = FX.part(shotStage, Enum.PartType.Ball, palette.hot, 0, Vector3.one * 0.05, startFrame)
+	local chargeHalo = FX.part(shotStage, Enum.PartType.Ball, palette.red, 0.5, Vector3.one * 0.1, startFrame)
+	local chargeAura = FX.part(shotStage, Enum.PartType.Ball, palette.deep, 0.86, Vector3.one * 0.2, startFrame)
+
+	local chargeLight = Instance.new("PointLight")
+	chargeLight.Color = palette.bright
+	chargeLight.Range = 6
+	chargeLight.Brightness = 1
+	chargeLight.Shadows = false
+	chargeLight.Parent = chargeCore
+
+	local streaks = {}
+	for _ = 1, 14 do
+		local streakColor = FX.rng:NextInteger(1, 2) == 1 and palette.bright or palette.hot
+		table.insert(streaks, {
+			part = FX.part(shotStage, Enum.PartType.Block, streakColor, 1, Vector3.new(0.05, 0.05, 0.4), startFrame),
+			angle = FX.rng:NextNumber(0, fullTurn),
+			polar = FX.rng:NextNumber(0.2, 1.4),
+			radius = FX.rng:NextNumber(1.6, 3.2),
+			swirl = FX.rng:NextNumber(5, 9) * (FX.rng:NextInteger(0, 1) == 0 and -1 or 1),
+			phase = FX.rng:NextNumber(0, 1),
+		})
+	end
+
+	local rings = { FX.newRing(shotStage, 20, palette.red), FX.newRing(shotStage, 20, palette.bright) }
+
+	FX.run(shotStage, duration, function(progress, elapsed)
+		local coreFrame = getMuzzleFrame() * CFrame.new(0, 0, -0.2)
+		local flicker = 1 + (0.5 + progress) * (0.06 * math.sin(elapsed * 57) + 0.04 * math.sin(elapsed * 93))
+		local coreSize = (0.05 + 0.7 * progress ^ 2) * flicker
+		chargeCore.Size = Vector3.one * coreSize
+		chargeCore.CFrame = coreFrame
+		chargeHalo.Size = Vector3.one * coreSize * 2.2
+		chargeHalo.CFrame = coreFrame
+		chargeAura.Size = Vector3.one * coreSize * 3.4
+		chargeAura.CFrame = coreFrame
+		chargeLight.Brightness = 1 + 5 * progress
+		chargeLight.Range = 6 + 4 * progress
+
+		for _, streak in ipairs(streaks) do
+			local cycleAlpha = (elapsed / streakCycleTime + streak.phase) % 1
+			local radius = streak.radius * (1 - cycleAlpha) ^ 1.5
+			local angle = streak.angle + streak.swirl * elapsed
+			local localOffset = Vector3.new(math.sin(streak.polar) * math.cos(angle), math.sin(streak.polar) * math.sin(angle), -math.cos(streak.polar)) * radius
+			local streakPosition = coreFrame:PointToWorldSpace(localOffset)
+			local streakLength = 0.12 + 0.5 * (1 - cycleAlpha)
+			streak.part.Size = Vector3.new(0.05, 0.05, streakLength)
+			streak.part.CFrame = CFrame.lookAt(streakPosition, coreFrame.Position)
+			streak.part.Transparency = 1 - 0.9 * math.sin(math.pi * cycleAlpha) ^ 0.6
+		end
+
+		for ringIndex, ring in ipairs(rings) do
+			local ringAlpha = (elapsed / ringCycleTime + (ringIndex - 1) * 0.5) % 1
+			local ringRadius = 0.15 + 2.2 * (1 - ringAlpha) ^ 1.6
+			local ringTransparency = 1 - 0.85 * math.sin(math.pi * ringAlpha) ^ 0.5
+			FX.setRing(ring, coreFrame, ringRadius, 0.03 + 0.02 * progress, ringTransparency, 0)
+		end
+	end, function()
+		chargeCore:Destroy()
+		chargeHalo:Destroy()
+		chargeAura:Destroy()
+		for _, streak in ipairs(streaks) do
+			streak.part:Destroy()
+		end
+		for _, ring in ipairs(rings) do
+			FX.destroyRing(ring)
+		end
+	end)
+end
+
+local function fireDroneM1(side, targetRoot, shotStage)
+	if not targetRoot or not targetRoot.Parent then
+		return
+	end
+
+	local palette = VFX.palette
+	local shooter = findDroneRig(side)
+	if not shooter then
+		return
+	end
+
+	local function getMuzzlePosition()
+		return (shooter.model:GetPivot() * CFrame.new(0, 0, -0.09)).Position
+	end
+
+	local startPosition = getMuzzlePosition()
+	local lastTargetPosition = targetRoot.Position
+	local initialOffset = lastTargetPosition - startPosition
+	local initialDirection = initialOffset.Magnitude > 0.1 and initialOffset.Unit or shooter.model:GetPivot().LookVector
+	local totalTime = DRONE_BEAM_TRAVEL_TIME + DRONE_BEAM_HOLD_TIME + DRONE_BEAM_COLLAPSE_TIME
+
+	FX.comboFlash(shotStage, startPosition, lastTargetPosition, palette.bright, 3, 0.4)
+
+	local muzzleFlare = FX.part(shotStage, Enum.PartType.Ball, palette.hot, 0.05, Vector3.one * 0.35, CFrame.new(startPosition))
+	FX.tween(muzzleFlare, 0.12, { Size = Vector3.one * 1.5, Transparency = 1 })
+	local muzzleSparkPart = FX.node(shotStage)
+	muzzleSparkPart.CFrame = CFrame.lookAt(startPosition, startPosition + initialDirection)
+	FX.burst(muzzleSparkPart, 6, {
+		speed = NumberRange.new(22, 48),
+		spread = Vector2.new(24, 24),
+		lifetime = NumberRange.new(0.08, 0.18),
+		size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.28), NumberSequenceKeypoint.new(1, 0) }),
+		acceleration = Vector3.zero,
+		drag = 3,
+	})
+
+	local headPart, headAttachment = FX.node(shotStage)
+	local tailPart, tailAttachment = FX.node(shotStage)
+	local auraBeam = FX.beam(shotStage, tailAttachment, headAttachment, ColorSequence.new(palette.red), 1.3, 1.3, NumberSequence.new(0.8), 0)
+	local glowBeam = FX.beam(shotStage, tailAttachment, headAttachment, ColorSequence.new(palette.bright), 0.55, 0.55, NumberSequence.new(0.2), 0.02)
+	local coreBeam = FX.beam(shotStage, tailAttachment, headAttachment, ColorSequence.new(palette.hot), 0.2, 0.2, NumberSequence.new(0), 0.04)
+	local headBall = FX.part(shotStage, Enum.PartType.Ball, palette.hot, 0, Vector3.one * 0.6, CFrame.new(startPosition))
+
+	local function spawnImpact(impactPosition, impactDirection)
+		local impactFlash = FX.part(shotStage, Enum.PartType.Ball, palette.hot, 0.05, Vector3.one * 0.8, CFrame.new(impactPosition))
+		FX.tween(impactFlash, 0.16, { Size = Vector3.one * 2.6, Transparency = 1 })
+		local impactSparkPart = FX.node(shotStage)
+		impactSparkPart.CFrame = CFrame.lookAt(impactPosition, impactPosition - impactDirection)
+		FX.burst(impactSparkPart, 10, {
+			speed = NumberRange.new(16, 36),
+			spread = Vector2.new(60, 60),
+			lifetime = NumberRange.new(0.12, 0.28),
+			size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.32), NumberSequenceKeypoint.new(1, 0) }),
+			acceleration = Vector3.new(0, -30, 0),
+			drag = 2.5,
+		})
+		FX.shockRing(shotStage, FX.facing(impactPosition - impactDirection * 0.4, impactDirection), {
+			startRadius = 0.3,
+			endRadius = 3,
+			duration = 0.2,
+			thickness = 0.14,
+			color = palette.bright,
+			segments = 20,
+			startTransparency = 0.1,
+		})
+	end
+
+	local hasImpacted = false
+	FX.run(shotStage, totalTime, function(_, elapsed)
+		local muzzlePosition = getMuzzlePosition()
+		if targetRoot.Parent then
+			lastTargetPosition = targetRoot.Position
+		end
+		local offset = lastTargetPosition - muzzlePosition
+		local distance = math.max(offset.Magnitude, 0.1)
+		local direction = offset.Magnitude > 0.1 and offset.Unit or initialDirection
+
+		local travelAlpha = math.clamp(elapsed / DRONE_BEAM_TRAVEL_TIME, 0, 1)
+		local collapseAlpha = math.clamp((elapsed - DRONE_BEAM_TRAVEL_TIME - DRONE_BEAM_HOLD_TIME) / DRONE_BEAM_COLLAPSE_TIME, 0, 1)
+		local headDistance = distance * (1 - (1 - travelAlpha) ^ 2)
+		local tailDistance = distance * collapseAlpha ^ 2.2
+		headPart.Position = muzzlePosition + direction * headDistance
+		tailPart.Position = muzzlePosition + direction * tailDistance
+
+		if not hasImpacted and travelAlpha >= 1 then
+			hasImpacted = true
+			spawnImpact(lastTargetPosition, direction)
+		end
+
+		local widthScale = (1 - collapseAlpha) ^ 1.4 * (1 + 0.9 * math.exp(-elapsed * 45)) * (1 + 0.07 * math.sin(elapsed * 220))
+		auraBeam.Width0 = 1.3 * widthScale
+		auraBeam.Width1 = 1.3 * widthScale
+		glowBeam.Width0 = 0.55 * widthScale
+		glowBeam.Width1 = 0.55 * widthScale
+		coreBeam.Width0 = 0.2 * widthScale
+		coreBeam.Width1 = 0.2 * widthScale
+		auraBeam.Transparency = NumberSequence.new(0.8 + 0.2 * collapseAlpha)
+		glowBeam.Transparency = NumberSequence.new(0.2 + 0.8 * collapseAlpha ^ 2)
+		coreBeam.Transparency = NumberSequence.new(collapseAlpha ^ 3)
+
+		headBall.CFrame = CFrame.new(headPart.Position)
+		headBall.Size = Vector3.one * math.max(0.6 * (1 - collapseAlpha), 0.05)
+		headBall.Transparency = collapseAlpha
+	end, function()
+		headBall:Destroy()
+		headPart:Destroy()
+		tailPart:Destroy()
+		auraBeam:Destroy()
+		glowBeam:Destroy()
+		coreBeam:Destroy()
+	end)
+end
+
+local ATTACK2_CHARGE_TIME = 0.2
+local ATTACK2_FIRE_START = 0.2
+local ATTACK2_FIRE_END = 1.7
+local ATTACK2_SHOT_INTERVAL = 0.1
+local ATTACK2_STAGE_LIFETIME = 2.5
+local attack2Running = false
+
+local ATTACK2_SHAKE_START = 0.2
+local ATTACK2_SHAKE_END = 1.7
+local ATTACK2_SHAKE_FADE_IN = 0.04
+local ATTACK2_SHAKE_FADE_OUT = 0.25
+local ATTACK2_SHAKE_NOISE_SPEED = 80
+local ATTACK2_SHAKE_POSITION = 0.3
+local ATTACK2_SHAKE_ROTATION = math.rad(1.4)
+local ATTACK2_SHAKE_PUNCH_BACK = 0.4
+local ATTACK2_SHAKE_PUNCH_PITCH = math.rad(1.2)
+local ATTACK2_SHAKE_PUNCH_ROLL = math.rad(2)
+local ATTACK2_SHAKE_PUNCH_DECAY = 35
+
+function FX.attack2Shake()
+	local noiseSeed = FX.rng:NextNumber(1, 90)
+	local startedAt = os.clock()
+	local bindName = "RickPrimeAttack2Shake" .. tostring(startedAt)
+	local duration = ATTACK2_SHAKE_END - ATTACK2_SHAKE_START
+
+	RunService:BindToRenderStep(bindName, Enum.RenderPriority.Last.Value + 1, function()
+		local camera = workspace.CurrentCamera
+		local age = os.clock() - startedAt - ATTACK2_SHAKE_START
+		if not camera or age >= duration then
+			RunService:UnbindFromRenderStep(bindName)
+			return
+		end
+		if age < 0 then return end
+
+		local intensity = math.clamp(age / ATTACK2_SHAKE_FADE_IN, 0, 1)
+			* math.clamp((duration - age) / ATTACK2_SHAKE_FADE_OUT, 0, 1)
+		local punch = math.exp(-(age % ATTACK2_SHOT_INTERVAL) * ATTACK2_SHAKE_PUNCH_DECAY) * intensity
+		local rollSign = math.floor(age / ATTACK2_SHOT_INTERVAL) % 2 == 0 and 1 or -1
+		local function noise(offset)
+			return math.noise(age * ATTACK2_SHAKE_NOISE_SPEED, noiseSeed, offset) * 2 * intensity
+		end
+
+		camera.CFrame = camera.CFrame
+			* CFrame.new(
+				noise(0.13) * ATTACK2_SHAKE_POSITION,
+				noise(0.37) * ATTACK2_SHAKE_POSITION,
+				ATTACK2_SHAKE_PUNCH_BACK * punch
+			)
+			* CFrame.Angles(
+				noise(0.61) * ATTACK2_SHAKE_ROTATION + ATTACK2_SHAKE_PUNCH_PITCH * punch,
+				noise(0.83) * ATTACK2_SHAKE_ROTATION,
+				noise(0.97) * ATTACK2_SHAKE_ROTATION + rollSign * ATTACK2_SHAKE_PUNCH_ROLL * punch
+			)
+	end)
+
+	return function()
+		pcall(function()
+			RunService:UnbindFromRenderStep(bindName)
+		end)
+	end
+end
+
+local ATTACK2_FOLLOW_START = 0.2
+local ATTACK2_FOLLOW_END = 1.7
+local ATTACK2_GUN_KICK_SCALE = 0.5
+local ATTACK2_CLONE_LINGER = 0.6
+local ATTACK2_GUN_FIRE_START = ATTACK2_FIRE_START
+local ATTACK2_GUN_FIRE_END = ATTACK2_FIRE_END - 0.25
+local ATTACK2_GUN_SHOT_INTERVAL = 0.05
+local ATTACK2_GUN_SPREAD = 2.4
+local ATTACK2_GUN_BEAM = { widthScale = 0.55, travelTime = 0.05, holdTime = 0.06, fadeTime = 0.1 }
+
+local function startAttack2Clone(character, rootPart, getTargetRoot, stage)
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return function() end
+	end
+
+	character.Archivable = true
+	local clone = character:Clone()
+	if not clone then
+		return function() end
+	end
+	clone.Name = "RickPrimeClone"
+	for _, descendant in ipairs(clone:GetDescendants()) do
+		if descendant:IsA("LuaSourceContainer") then
+			descendant:Destroy()
+		end
+	end
+	local cloneHumanoid = clone:FindFirstChildOfClass("Humanoid")
+	local cloneRoot = clone:FindFirstChild("HumanoidRootPart")
+	if not cloneHumanoid or not cloneRoot then
+		clone:Destroy()
+		return function() end
+	end
+	cloneHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	cloneRoot.Anchored = true
+	local cloneArm = clone:FindFirstChild("Left Arm")
+	if cloneArm then
+		for _, leftoverName in ipairs({ GUN_MODEL_NAME, WELD_NAME, LEGACY_WIELD_NAME }) do
+			local leftoverInstance = cloneArm:FindFirstChild(leftoverName)
+			if leftoverInstance then
+				leftoverInstance:Destroy()
+			end
+		end
+	end
+	clone.Parent = workspace
+	clone:PivotTo(rootPart.CFrame)
+	local cloneBasePosition = cloneRoot.Position
+
+	local gunModel = cloneArm and attachGun(cloneArm)
+	local gunWeld = cloneArm and cloneArm:FindFirstChild(WELD_NAME)
+	local gunBaseC0 = gunWeld and gunWeld.C0
+	local cloneGunTrack
+	if cloneHumanoid:FindFirstChildOfClass("Animator") then
+		cloneGunTrack = playGunAnimation(cloneHumanoid)
+	end
+	local lastShotTime
+	local gunKickConnection = RunService.PreRender:Connect(function()
+		if not (gunWeld and gunWeld.Parent and lastShotTime) then return end
+		local age = os.clock() - lastShotTime
+		local rise = 1 - math.exp(-age * 90)
+		gunWeld.C0 = gunBaseC0
+			* CFrame.new(0, 0, VFX.gunKickBack * ATTACK2_GUN_KICK_SCALE * math.exp(-age * 11) * rise)
+			* CFrame.Angles(VFX.gunKickPitch * ATTACK2_GUN_KICK_SCALE * math.exp(-age * 6.5) * rise, 0, 0)
+	end)
+	local function markGunShot()
+		lastShotTime = os.clock()
+	end
+
+	local savedDisplayDistance = humanoid.DisplayDistanceType
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	local finished = false
+
+	local function faceCloneAtTarget()
+		local targetRoot = getTargetRoot()
+		if targetRoot and targetRoot.Parent and clone.Parent then
+			local targetPosition = targetRoot.Position
+			local flatTarget = Vector3.new(targetPosition.X, cloneBasePosition.Y, targetPosition.Z)
+			if (flatTarget - cloneBasePosition).Magnitude > 0.01 then
+				clone:PivotTo(CFrame.lookAt(cloneBasePosition, flatTarget))
+			end
+		end
+	end
+
+	local function updateClone()
+		faceCloneAtTarget()
+	end
+	updateClone()
+	local restoreHide = FX.hideCharacter(character)
+	local cloneUpdateConnection = RunService.Heartbeat:Connect(updateClone)
+	local cloneFaceConnection = RunService.PreRender:Connect(faceCloneAtTarget)
+
+	-- camera on the clone, same rig as attack 1
+	local camera = workspace.CurrentCamera
+	local savedCameraType, savedFov, savedCameraCFrame, cameraRig
+	local cameraBindName = "RickPrimeAttack2Cam" .. tostring(os.clock())
+	local cameraOk, cameraError = pcall(function()
+		savedCameraType = camera.CameraType
+		savedFov = camera.FieldOfView
+		savedCameraCFrame = camera.CFrame
+		camera.CameraType = Enum.CameraType.Scriptable
+		local baseCameraCFrame = camera.CFrame
+		local focus = cloneBasePosition + Vector3.new(0, 1.5, 0)
+		local toFocus = focus - baseCameraCFrame.Position
+		local aimRoot = getTargetRoot()
+		local awayFromTarget = aimRoot and Vector3.new(cloneBasePosition.X - aimRoot.Position.X, 0, cloneBasePosition.Z - aimRoot.Position.Z) or Vector3.zero
+		awayFromTarget = awayFromTarget.Magnitude > 0.05 and awayFromTarget.Unit or -rootPart.CFrame.LookVector
+		if toFocus.Magnitude < 5 then
+			baseCameraCFrame = CFrame.lookAt(focus + awayFromTarget * 9 + Vector3.new(0, 1.5, 0), focus)
+		elseif baseCameraCFrame.LookVector:Dot(toFocus.Unit) < 0.8 then
+			baseCameraCFrame = CFrame.lookAt(baseCameraCFrame.Position, focus)
+		end
+		cameraRig = FX.camera(cameraBindName, camera, baseCameraCFrame, savedFov, os.clock(), ATTACK2_CHARGE_TIME)
+	end)
+	if not cameraOk then
+		warn("[Attack2] camera error:", cameraError)
+		cameraRig = nil
+		if camera and savedCameraType then
+			camera.CameraType = savedCameraType
+		end
+	end
+
+	-- gives the camera back right away (used when another attack starts mid attack 2)
+	local cameraReleased = false
+	local function releaseCamera(restoreFrame)
+		if cameraReleased then return end
+		cameraReleased = true
+		if not cameraOk then return end
+		pcall(function()
+			RunService:UnbindFromRenderStep(cameraBindName)
+		end)
+		camera.FieldOfView = savedFov
+		camera.CameraType = savedCameraType
+		if restoreFrame and savedCameraCFrame then
+			camera.CFrame = savedCameraCFrame
+		end
+	end
+
+	-- gun mag dump: first round is the full attack 1 beam, the rest are lighter scattered rounds
+	local gunIgnoreList = FX.ignoreList(stage, clone, character)
+	local function shootGun(shotTargetRoot, isOpener)
+		if finished or not (gunModel and gunModel.Parent and shotTargetRoot and shotTargetRoot.Parent) then
+			return
+		end
+		markGunShot()
+		local context
+		if isOpener then
+			context = {
+				stage = stage,
+				ignore = FX.ignoreList(stage, clone, character, shotTargetRoot.Parent),
+				feetPosition = cloneBasePosition,
+				onImpact = function()
+					if cameraRig then
+						cameraRig.impact()
+					end
+				end,
+			}
+			if cameraRig then
+				cameraRig.fire()
+			end
+		else
+			local spread = ATTACK2_GUN_SPREAD
+			context = {
+				stage = stage,
+				ignore = gunIgnoreList,
+				lite = true,
+				aimOffset = Vector3.new(FX.rng:NextNumber(-spread, spread), FX.rng:NextNumber(-spread, spread), FX.rng:NextNumber(-spread, spread)),
+				widthScale = ATTACK2_GUN_BEAM.widthScale,
+				travelTime = ATTACK2_GUN_BEAM.travelTime,
+				holdTime = ATTACK2_GUN_BEAM.holdTime,
+				fadeTime = ATTACK2_GUN_BEAM.fadeTime,
+			}
+		end
+		pcall(fireBeam, gunModel, function() end, shotTargetRoot, context)
+	end
+
+	local lockConnections = {}
+	local savedAutoRotate = humanoid.AutoRotate
+	local lockDirection
+
+	local function stopLock()
+		for _, lockConnection in ipairs(lockConnections) do
+			lockConnection:Disconnect()
+		end
+		table.clear(lockConnections)
+	end
+
+	local function pickLockDirection(targetRoot)
+		local targetPosition = targetRoot.Position
+		local myPosition = rootPart.Position
+		local approach = Vector3.new(targetPosition.X - myPosition.X, 0, targetPosition.Z - myPosition.Z)
+		if approach.Magnitude > 0.01 then
+			lockDirection = approach.Unit
+		else
+			local look = targetRoot.CFrame.LookVector
+			local flatLook = Vector3.new(look.X, 0, look.Z)
+			lockDirection = flatLook.Magnitude > 0.01 and -flatLook.Unit or Vector3.new(0, 0, 1)
+		end
+	end
+
+	local function lockBehindTarget()
+		if finished then return end
+		if not rootPart.Parent then
+			stopLock()
+			return
+		end
+		local targetRoot = getTargetRoot()
+		if not (targetRoot and targetRoot.Parent and lockDirection) then return end
+
+		local targetPosition = targetRoot.Position
+		local anchorPosition = targetPosition
+		if LOCK_PREDICT_LATENCY then
+			local leadTime = math.clamp(localPlayer:GetNetworkPing(), 0, LOCK_MAX_PREDICT_TIME)
+			local lead = targetRoot.AssemblyLinearVelocity * leadTime
+			if lead.Magnitude > LOCK_MAX_LEAD then
+				lead = lead.Unit * LOCK_MAX_LEAD
+			end
+			anchorPosition = targetPosition + lead
+		end
+
+		local behindPosition = anchorPosition + lockDirection * BEHIND_DISTANCE
+		local facePoint = Vector3.new(targetPosition.X, behindPosition.Y, targetPosition.Z)
+		if (facePoint - behindPosition).Magnitude < 0.01 then
+			facePoint = behindPosition - lockDirection
+		end
+
+		rootPart.CFrame = CFrame.lookAt(behindPosition, facePoint)
+		rootPart.AssemblyLinearVelocity = Vector3.zero
+		rootPart.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	task.delay(ATTACK2_FOLLOW_START, function()
+		if finished or not clone.Parent then return end
+		local targetRoot = getTargetRoot()
+		if not (targetRoot and targetRoot.Parent) then return end
+		humanoid.AutoRotate = false
+		pickLockDirection(targetRoot)
+		lockBehindTarget()
+		table.insert(lockConnections, RunService.PreSimulation:Connect(lockBehindTarget))
+		table.insert(lockConnections, RunService.Heartbeat:Connect(lockBehindTarget))
+		table.insert(lockConnections, RunService.PreRender:Connect(lockBehindTarget))
+	end)
+
+	local function cleanup()
+		if finished then return end
+		finished = true
+		cloneUpdateConnection:Disconnect()
+		cloneFaceConnection:Disconnect()
+		gunKickConnection:Disconnect()
+		stopLock()
+		humanoid.AutoRotate = savedAutoRotate
+
+		local gunTimePosition = cloneGunTrack and cloneGunTrack.TimePosition or ANIMATION_PAUSE_TIME
+		if rootPart.Parent and humanoid.Health > 0 then
+			rootPart.CFrame = CFrame.new(cloneBasePosition) * clone:GetPivot().Rotation
+			rootPart.AssemblyLinearVelocity = Vector3.zero
+			rootPart.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		restoreHide()
+		releaseCamera()
+		humanoid.DisplayDistanceType = savedDisplayDistance
+		clone:Destroy()
+
+		-- pick the clone's gun pose back up on the real character
+		if humanoid.Health > 0 then
+			local animator = humanoid:FindFirstChildOfClass("Animator")
+			if animator then
+				for _, playingTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+					if playingTrack.Animation and playingTrack.Animation.AnimationId == GUN_ANIMATION_ID then
+						playingTrack:Stop(0)
+					end
+				end
+			end
+			resumeGunAnimation(humanoid, gunTimePosition)
+		end
+	end
+
+	return cleanup, shootGun, releaseCamera
+end
+
+local function runAttack2(character, root)
+	if attack2Running then return end
+	local targetRoot = getClosestTargetRoot(root.Position)
+	if not targetRoot then return end
+	attack2Running = true
+
+	local stage = Instance.new("Folder")
+	stage.Name = "DroneAttack2Stage"
+	stage.Parent = workspace
+	Debris:AddItem(stage, ATTACK2_STAGE_LIFETIME)
+
+	local cloneOk, returnToPlayer, shootGun, releaseCloneCamera = pcall(startAttack2Clone, character, root, function()
+		return targetRoot
+	end, stage)
+	if not cloneOk then
+		warn("[Attack2] clone error:", returnToPlayer)
+		returnToPlayer = function() end
+		shootGun = nil
+		releaseCloneCamera = nil
+	end
+	local attack2Finished = false
+	local function finishAttack2()
+		if attack2Finished then return end
+		attack2Finished = true
+		returnToPlayer()
+		FX.releaseAttack2Camera = function() end
+		attack2Running = false
+	end
+	task.delay(ATTACK2_FOLLOW_END, finishAttack2)
+
+	local shakeOk, cancelShake = pcall(FX.attack2Shake)
+	FX.releaseAttack2Camera = function()
+		if releaseCloneCamera then
+			pcall(releaseCloneCamera, true)
+		end
+		if shakeOk and cancelShake then
+			cancelShake()
+		end
+	end
+	pcall(chargeDroneM1, -1, targetRoot, stage, ATTACK2_CHARGE_TIME)
+	pcall(chargeDroneM1, 1, targetRoot, stage, ATTACK2_CHARGE_TIME)
+
+	task.spawn(function()
+		local startClock = os.clock()
+		local shotTime = ATTACK2_FIRE_START
+		while shotTime < ATTACK2_FIRE_END - 0.001 do
+			local waitTime = startClock + shotTime - os.clock()
+			if waitTime > 0 then
+				task.wait(waitTime)
+			end
+			if not stage.Parent or not character.Parent then break end
+			if not targetRoot.Parent then
+				targetRoot = getClosestTargetRoot(root.Position)
+				if not targetRoot then break end
+			end
+			pcall(fireDroneM1, -1, targetRoot, stage)
+			pcall(fireDroneM1, 1, targetRoot, stage)
+			shotTime += ATTACK2_SHOT_INTERVAL
+		end
+		if shotTime < ATTACK2_FIRE_END - 0.001 then
+			finishAttack2()
+		end
+	end)
+
+	if shootGun then
+		task.spawn(function()
+			local gunStartClock = os.clock()
+			local shotTime = ATTACK2_GUN_FIRE_START
+			local round = 0
+			while shotTime < ATTACK2_GUN_FIRE_END - 0.001 do
+				local waitTime = gunStartClock + shotTime - os.clock()
+				if waitTime > 0 then
+					task.wait(waitTime)
+				end
+				if attack2Finished or not stage.Parent or not character.Parent then break end
+				if targetRoot and targetRoot.Parent then
+					round += 1
+					shootGun(targetRoot, round == 1)
+				end
+				shotTime += ATTACK2_GUN_SHOT_INTERVAL
+			end
+		end)
+	end
+end
+
+local function spawnHitbox(root, character, onHit)
+	local hitbox = Instance.new("Part")
+	hitbox.Name = "Hitbox"
+	hitbox.Size = Vector3.new(12, 12, 12)
+	hitbox.Anchored = true
+	hitbox.CanCollide = false
+	hitbox.CanQuery = false
+	hitbox.Transparency = 1
+	hitbox.CFrame = root.CFrame * CFrame.new(0, 0, -0.3)
+	hitbox.Parent = workspace
+
+	local handled = false
+	hitbox.Touched:Connect(function(touched)
+		if handled then return end
+		local model = touched:FindFirstAncestorOfClass("Model")
+		if not model or model == character or model.Name == "RickPrimeClone" then return end
+		if not model:FindFirstChild("Humanoid") then return end
+		handled = true
+		hitbox:Destroy()
+		onHit(model)
+	end)
+	Debris:AddItem(hitbox, 0.15)
+end
+
+local function hookCharacter(character)
+	local humanoid = character:WaitForChild("Humanoid")
+	local root = character:WaitForChild("HumanoidRootPart")
+	humanoid.AnimationPlayed:Connect(function(track)
+		if ownTracks[track] then return end
+		local id = track.Animation and track.Animation.AnimationId
+		if id and string.find(id, TRIGGER_ANIM_IDS.ATTACK2, 1, true) then
+			runAttack2(character, root)
+			return
+		end
+
+		local replacement = COMBO_ANIMS[id]
+		if not replacement then return end
+
+		if replacement ~= id then
+			track:Stop()
+			local anim = Instance.new("Animation")
+			anim.AnimationId = replacement
+			local newTrack = humanoid:LoadAnimation(anim)
+			ownTracks[newTrack] = true
+			newTrack:Play()
+		end
+
+		spawnHitbox(root, character, function(hitModel)
+			local targetRoot = hitModel:FindFirstChild("HumanoidRootPart")
+			if not targetRoot then return end
+			local stage = Instance.new("Folder")
+			stage.Name = "DroneHitStage"
+			stage.Parent = workspace
+			Debris:AddItem(stage, 2)
+			if not GUN_BEAM_COMBO_IDS[id] then
+				pcall(chargeDroneM1, COMBO_SIDE[id], targetRoot, stage, DRONE_HIT_DELAY)
+			end
+			task.delay(DRONE_HIT_DELAY, function()
+				if not targetRoot.Parent then return end
+				if GUN_BEAM_COMBO_IDS[id] then
+					local leftArm = character:FindFirstChild("Left Arm")
+					local gunModel = leftArm and leftArm:FindFirstChild(GUN_MODEL_NAME)
+					if gunModel then
+						local comboShake = FX.comboShake(GUN_SHAKE_DURATION)
+						local gunShotContext = {
+							stage = stage,
+							ignore = FX.ignoreList(stage, character, hitModel),
+							feetPosition = root.Position,
+							onImpact = comboShake.impact,
+						}
+						comboShake.fire()
+						pcall(fireBeam, gunModel, function() end, targetRoot, gunShotContext)
+					end
+					return
+				end
+				FX.m1Shake(DRONE_SHAKE_DURATION, COMBO_SIDE[id])
+				pcall(fireDroneM1, COMBO_SIDE[id], targetRoot, stage)
+			end)
+		end)
+	end)
+end
+
+if player.Character then
+	task.spawn(hookCharacter, player.Character)
+end
+player.CharacterAdded:Connect(hookCharacter)
+
+RunService.RenderStepped:Connect(function(dt)
+	local cloneChar = workspace:FindFirstChild("RickPrimeClone")
+	local char = cloneChar or player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local t = os.clock()
+	local look = hrp.CFrame.LookVector
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude < 0.01 then flat = Vector3.new(0, 0, -1) end
+	local base = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+	local a = 1 - math.exp(-dt * CONFIG.Follow)
+
+	for _, r in ipairs(rigs) do
+		local target = base * CFrame.new(r.side * CONFIG.Side, CONFIG.Height, CONFIG.Back)
+		r.cf = r.cf and r.cf:Lerp(target, a) or target
+		local bob = math.sin(t * CONFIG.FloatSpeed + r.phase) * CONFIG.FloatAmp
+		local sway = CFrame.Angles(
+			math.sin(t * 0.7 + r.phase) * 0.04,
+			math.sin(t * 0.9 + r.phase) * 0.08,
+			math.sin(t * 1.1 + r.phase) * 0.05
+		)
+		r.model:PivotTo(r.cf * CFrame.new(0, bob, 0) * sway)
+		if not r.model.Parent then r.model.Parent = workspace end
+	end
+end)
 end)
