@@ -3079,54 +3079,92 @@ local sequenceBusy = false
 local attackRunning = false
 local attack3Running = false
 
+-- move gate: nothing can start a move while the script is still loading, only a freshly started
+-- animation counts as a trigger, and only one move runs at a time (so they can never stack up)
+local MOVES = {
+	armDelay = 1.5,
+	maxTrackAge = 0.6,
+	lockTimeout = 6,
+	loadedAt = os.clock(),
+	owner = nil,
+	since = 0,
+}
+
+function MOVES.armed()
+	return os.clock() - MOVES.loadedAt >= MOVES.armDelay
+end
+
+function MOVES.tryStart(name)
+	local now = os.clock()
+	if MOVES.owner and now - MOVES.since < MOVES.lockTimeout then
+		return false
+	end
+	MOVES.owner = name
+	MOVES.since = now
+	return true
+end
+
+function MOVES.finish(name)
+	if MOVES.owner == name then
+		MOVES.owner = nil
+	end
+end
+
 RunService.Heartbeat:Connect(function()
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
+	if not animator or not MOVES.armed() then
 		return
 	end
 
 	for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-		if not attackRunning and track.Animation and string.find(track.Animation.AnimationId, TRIGGER_ANIM_IDS.ATTACK) then
-			attackRunning = true
-			track:Stop(0)
+		local animationId = track.Animation and track.Animation.AnimationId
+		-- only a swing that just started can trigger a move (never one that was already playing)
+		if animationId and track.TimePosition <= MOVES.maxTrackAge then
+			if not attackRunning and string.find(animationId, TRIGGER_ANIM_IDS.ATTACK) and MOVES.tryStart("attack1") then
+				attackRunning = true
+				track:Stop(0)
 
-			task.spawn(function()
-				sequenceBusy = true
-				local ok, err = pcall(runSequence, character, function()
-					sequenceBusy = false
-				end)
-				if not ok then
-					warn("[RickPrimeGun] Error:", err)
-					sequenceBusy = false
-				end
-
-				local started = tick()
-				while sequenceBusy and tick() - started < SEQUENCE_TIMEOUT do
-					task.wait(0.1)
-				end
-				attackRunning = false
-			end)
-
-			break
-		end
-
-		if track.Animation and string.find(track.Animation.AnimationId, TRIGGER_ANIM_IDS.ATTACK3) then
-			track:Stop(0)
-			if not attack3Running then
-				attack3Running = true
 				task.spawn(function()
-					local ok, err = pcall(runAttack3, character, animator, function()
-						attack3Running = false
+					sequenceBusy = true
+					local ok, err = pcall(runSequence, character, function()
+						sequenceBusy = false
 					end)
 					if not ok then
-						warn("[Attack3] Error:", err)
-						attack3Running = false
+						warn("[RickPrimeGun] Error:", err)
+						sequenceBusy = false
 					end
+
+					local started = tick()
+					while sequenceBusy and tick() - started < SEQUENCE_TIMEOUT do
+						task.wait(0.1)
+					end
+					attackRunning = false
+					MOVES.finish("attack1")
 				end)
+
+				break
 			end
-			break
+
+			if string.find(animationId, TRIGGER_ANIM_IDS.ATTACK3) then
+				track:Stop(0)
+				if not attack3Running and MOVES.tryStart("attack3") then
+					attack3Running = true
+					task.spawn(function()
+						local ok, err = pcall(runAttack3, character, animator, function()
+							attack3Running = false
+							MOVES.finish("attack3")
+						end)
+						if not ok then
+							warn("[Attack3] Error:", err)
+							attack3Running = false
+							MOVES.finish("attack3")
+						end
+					end)
+				end
+				break
+			end
 		end
 	end
 end)
@@ -3763,13 +3801,10 @@ local rigs = {
 
 droneFire = function(targetRoot, ctx, palette)
 	palette = palette or VFX.palette
-	local shooters = rigs
-	if ctx.side then
-		shooters = {}
-		for _, r in ipairs(rigs) do
-			if r.side == ctx.side then
-				table.insert(shooters, r)
-			end
+	local shooters = {}
+	for _, r in ipairs(rigs) do
+		if r.model.Parent and (not ctx.side or r.side == ctx.side) then
+			table.insert(shooters, r)
 		end
 	end
 	for _, r in ipairs(shooters) do
@@ -3900,12 +3935,74 @@ local M1 = {
 	kickFreq = 26,
 	kickTime = 0.7,
 
+	-- hit detection (swing -> victim): overlap query polled for a short window
+	hitSize = Vector3.new(12, 12, 12),
+	hitForward = 0.3,
+	hitMargin = 2,
+	hitWindow = 0.3,
+
 	-- gun finisher (4th hit)
 	gunCharge = 1.35,
 	gunTravel = 0.09,
 	gunHold = 0.2,
 	gunFade = 0.44,
 }
+
+-- runs an M1 effect and reports a failure in the output instead of swallowing it
+function M1.guard(label, callback, ...)
+	local ok, err = pcall(callback, ...)
+	if not ok then
+		warn("[RickPrime M1] " .. label .. " failed: " .. tostring(err))
+	end
+	return ok
+end
+
+-- the victim of a swing: nearest humanoid inside the hit box
+-- (overlap query instead of Touched, which never fires for resting or anchored targets)
+function M1.findVictim(root, character, overlapParams)
+	local boxFrame = root.CFrame * CFrame.new(0, 0, -M1.hitForward)
+	local best, bestDistance
+
+	local function consider(model)
+		if not model or model == character or model.Name == "RickPrimeClone" then
+			return
+		end
+		if not model:FindFirstChildOfClass("Humanoid") then
+			return
+		end
+		local targetRoot = model:FindFirstChild("HumanoidRootPart")
+		if not targetRoot then
+			return
+		end
+		local distance = (targetRoot.Position - root.Position).Magnitude
+		if not bestDistance or distance < bestDistance then
+			best, bestDistance = model, distance
+		end
+	end
+
+	for _, part in ipairs(workspace:GetPartBoundsInBox(boxFrame, M1.hitSize, overlapParams)) do
+		consider(part:FindFirstAncestorOfClass("Model"))
+	end
+	if best then
+		return best
+	end
+
+	-- fallback for targets whose parts can't be queried: test their root against the same box
+	local live = workspace:FindFirstChild(DUMMY_FOLDER_NAME)
+	if live then
+		local reach = M1.hitSize / 2 + Vector3.one * M1.hitMargin
+		for _, model in ipairs(live:GetChildren()) do
+			local targetRoot = model:IsA("Model") and model:FindFirstChild("HumanoidRootPart")
+			if targetRoot then
+				local offset = boxFrame:PointToObjectSpace(targetRoot.Position)
+				if math.abs(offset.X) <= reach.X and math.abs(offset.Y) <= reach.Y and math.abs(offset.Z) <= reach.Z then
+					consider(model)
+				end
+			end
+		end
+	end
+	return best
+end
 
 -- fades the swing out before it ends so the arm eases back to idle instead of snapping
 function M1.smoothEnd(comboTrack)
@@ -4096,7 +4193,7 @@ end
 
 local function findDroneRig(side)
 	for _, rig in ipairs(rigs) do
-		if rig.side == side then
+		if rig.side == side and rig.model.Parent then
 			return rig
 		end
 	end
@@ -6430,6 +6527,7 @@ local function runAttack2(character, root)
 	if attack2Running then return end
 	local targetRoot = getClosestTargetRoot(root.Position)
 	if not targetRoot then return end
+	if not MOVES.tryStart("attack2") then return end
 	attack2Running = true
 
 	local stage = Instance.new("Folder")
@@ -6453,6 +6551,7 @@ local function runAttack2(character, root)
 		returnToPlayer()
 		FX.releaseAttack2Camera = function() end
 		attack2Running = false
+		MOVES.finish("attack2")
 	end
 	task.delay(ATTACK2_FOLLOW_END, finishAttack2)
 
@@ -6562,27 +6661,28 @@ local function runAttack2(character, root)
 end
 
 local function spawnHitbox(root, character, onHit)
-	local hitbox = Instance.new("Part")
-	hitbox.Name = "Hitbox"
-	hitbox.Size = Vector3.new(12, 12, 12)
-	hitbox.Anchored = true
-	hitbox.CanCollide = false
-	hitbox.CanQuery = false
-	hitbox.Transparency = 1
-	hitbox.CFrame = root.CFrame * CFrame.new(0, 0, -0.3)
-	hitbox.Parent = workspace
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+	overlapParams.FilterDescendantsInstances = { character }
 
-	local handled = false
-	hitbox.Touched:Connect(function(touched)
-		if handled then return end
-		local model = touched:FindFirstAncestorOfClass("Model")
-		if not model or model == character or model.Name == "RickPrimeClone" then return end
-		if not model:FindFirstChild("Humanoid") then return end
-		handled = true
-		hitbox:Destroy()
-		onHit(model)
+	local startedAt = os.clock()
+	local connection
+	connection = RunService.Heartbeat:Connect(function()
+		if not root.Parent or os.clock() - startedAt > M1.hitWindow then
+			connection:Disconnect()
+			return
+		end
+		local ok, victim = pcall(M1.findVictim, root, character, overlapParams)
+		if not ok then
+			warn("[RickPrime M1] hit detection failed: " .. tostring(victim))
+			connection:Disconnect()
+			return
+		end
+		if victim then
+			connection:Disconnect()
+			onHit(victim)
+		end
 	end)
-	Debris:AddItem(hitbox, 0.15)
 end
 
 local function hookCharacter(character)
@@ -6592,7 +6692,9 @@ local function hookCharacter(character)
 		if ownTracks[track] then return end
 		local id = track.Animation and track.Animation.AnimationId
 		if id and string.find(id, TRIGGER_ANIM_IDS.ATTACK2, 1, true) then
-			runAttack2(character, root)
+			if MOVES.armed() then
+				runAttack2(character, root)
+			end
 			return
 		end
 
@@ -6624,10 +6726,15 @@ local function hookCharacter(character)
 			local gunModel = GUN_BEAM_COMBO_IDS[id] and leftArm and leftArm:FindFirstChild(GUN_MODEL_NAME)
 			if GUN_BEAM_COMBO_IDS[id] then
 				if gunModel then
-					pcall(chargeGunM1, gunModel, targetRoot, stage, DRONE_HIT_DELAY, M1.gunCharge)
+					M1.guard("gun charge", chargeGunM1, gunModel, targetRoot, stage, DRONE_HIT_DELAY, M1.gunCharge)
+				else
+					warn("[RickPrime M1] 4th hit: no " .. GUN_MODEL_NAME .. " on the left arm, so there is no gun shot")
 				end
 			else
-				pcall(chargeDroneM1, COMBO_SIDE[id], targetRoot, stage, DRONE_HIT_DELAY, power)
+				if not findDroneRig(COMBO_SIDE[id]) then
+					warn("[RickPrime M1] no drone on side " .. tostring(COMBO_SIDE[id]) .. " (still warping in, or hidden)")
+				end
+				M1.guard("drone charge", chargeDroneM1, COMBO_SIDE[id], targetRoot, stage, DRONE_HIT_DELAY, power)
 			end
 
 			task.delay(DRONE_HIT_DELAY, function()
@@ -6653,11 +6760,11 @@ local function hookCharacter(character)
 							end,
 						}
 						comboShake.fire()
-						pcall(fireBeam, gunModel, function() end, targetRoot, gunShotContext)
+						M1.guard("gun beam", fireBeam, gunModel, function() end, targetRoot, gunShotContext)
 					end
 					return
 				end
-				pcall(fireDroneM1, COMBO_SIDE[id], targetRoot, stage, power, function()
+				M1.guard("drone shot", fireDroneM1, COMBO_SIDE[id], targetRoot, stage, power, function()
 					FX.m1Shake(DRONE_SHAKE_DURATION, COMBO_SIDE[id], power)
 				end)
 			end)
@@ -6669,6 +6776,560 @@ if player.Character then
 	task.spawn(hookCharacter, player.Character)
 end
 player.CharacterAdded:Connect(hookCharacter)
+
+-- ============================================================================
+-- DRONE SPAWN : warp-in intro, plays once when the script first runs
+-- gyroscope rings collapse onto a charging core -> ignition burst -> the drone
+-- materialises (scale + spin + rise) -> its lights stutter on -> the red eye wakes
+-- every tunable is a fixed value in SPAWN
+-- ============================================================================
+
+local SPAWN = {
+	-- timeline (seconds)
+	startDelay = 0.45,
+	respawnDelay = 4,
+	stagger = 0.4,
+	charge = 0.9,
+	materialize = 0.95,
+	stageLife = 4.5,
+
+	-- drone motion while it materialises
+	startScale = 0.1,
+	overshoot = 1.9,
+	spin = math.rad(900),
+	sink = 2.4,
+	jitter = 0.2,
+	settleKick = 0.5,
+	settleKickAt = 0.75,
+
+	-- palette
+	hot = Color3.fromRGB(236, 252, 255),
+	bright = Color3.fromRGB(120, 240, 238),
+	cyan = Color3.fromRGB(81, 221, 222),
+	deep = Color3.fromRGB(24, 110, 170),
+	eyeRed = Color3.fromRGB(247, 84, 61),
+	eyeDeep = Color3.fromRGB(150, 24, 30),
+	eyeFlash = Color3.fromRGB(255, 244, 232),
+
+	-- charge
+	coreSize = 1.5,
+	gatherSize = 12,
+	gatherRate = 260,
+	gateOuter = 6.5,
+	gateMiddle = 5,
+	gateInner = 3.6,
+	gateEnd = 0.7,
+	gateThickness = 0.16,
+	gateSegments = 44,
+	gateSpin = 7,
+	floorRadius = 6,
+	floorSegments = 52,
+	boltEvery = 0.07,
+	boltStart = 0.45,
+	boltReach = 3.6,
+
+	-- ignition
+	flareSize = 5,
+	flashRange = 32,
+	flashTime = 0.7,
+	pillarHeight = 140,
+	pillarWidth = 2.6,
+	pillarTime = 0.45,
+	ringRadius = 13,
+	floorRingRadius = 18,
+	particleCount = 70,
+	boltCount = 8,
+	shakeTime = 0.6,
+	shakePower = 0.95,
+	sound = "",
+
+	-- lightning bolt shape
+	boltSegments = 6,
+	boltJag = 0.9,
+	boltLife = 0.16,
+
+	-- boot up (seconds after ignition)
+	lightNames = { "EyeGlow", "EyeCore", "BlueLight", "BlueLightCore", "TailLight" },
+	eyeWindows = { { 0.2, 0.27 }, { 0.33, 0.37 }, { 0.43, 99 } },
+	eyeWake = 0.43,
+	eyeSettleTime = 0.45,
+	eyeRingRadius = 4.5,
+	eyeStarSize = 5,
+}
+
+function SPAWN.easeOutBack(alpha)
+	local c1 = SPAWN.overshoot
+	local c3 = c1 + 1
+	return 1 + c3 * (alpha - 1) ^ 3 + c1 * (alpha - 1) ^ 2
+end
+
+-- soft four point lens flare in the spawn colours (FX.star fades to the red attack palette)
+function SPAWN.flare(stage, position, size, life, color, endColor)
+	local node = FX.node(stage)
+	node.CFrame = CFrame.new(position)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Enabled = false
+	emitter.Rate = 0
+	emitter.LightEmission = 1
+	emitter.LightInfluence = 0
+	emitter.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+		ColorSequenceKeypoint.new(0.4, color),
+		ColorSequenceKeypoint.new(1, endColor or SPAWN.deep),
+	})
+	emitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, size * 0.3),
+		NumberSequenceKeypoint.new(0.18, size),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.55, 0.25),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Lifetime = NumberRange.new(life, life)
+	emitter.Speed = NumberRange.new(0, 0)
+	emitter.Rotation = NumberRange.new(0, 360)
+	emitter.RotSpeed = NumberRange.new(-80, 80)
+	emitter.Parent = node
+	emitter:Emit(1)
+	Debris:AddItem(node, life + 0.25)
+end
+
+-- one jagged lightning bolt that snaps out and fades
+function SPAWN.bolt(stage, startPoint, endPoint)
+	local delta = endPoint - startPoint
+	if delta.Magnitude < 0.1 then
+		return
+	end
+	local frame = FX.facing(startPoint, delta)
+	local points = { startPoint }
+	for index = 1, SPAWN.boltSegments - 1 do
+		local alpha = index / SPAWN.boltSegments
+		local spread = SPAWN.boltJag * math.sin(math.pi * alpha)
+		points[#points + 1] = startPoint + delta * alpha
+			+ frame.RightVector * FX.rng:NextNumber(-1, 1) * spread
+			+ frame.UpVector * FX.rng:NextNumber(-1, 1) * spread
+	end
+	points[#points + 1] = endPoint
+	for index = 1, #points - 1 do
+		local pointA, pointB = points[index], points[index + 1]
+		local length = (pointB - pointA).Magnitude
+		if length > 0.01 then
+			local cframe = FX.facing((pointA + pointB) / 2, pointB - pointA)
+			local body = FX.part(stage, Enum.PartType.Block, SPAWN.cyan, 0.15, Vector3.new(0.16, 0.16, length + 0.1), cframe)
+			local core = FX.part(stage, Enum.PartType.Block, SPAWN.hot, 0, Vector3.new(0.06, 0.06, length + 0.1), cframe)
+			FX.tween(body, SPAWN.boltLife, { Transparency = 1 })
+			FX.tween(core, SPAWN.boltLife * 0.8, { Transparency = 1 })
+			Debris:AddItem(body, SPAWN.boltLife + 0.1)
+			Debris:AddItem(core, SPAWN.boltLife + 0.1)
+		end
+	end
+end
+
+-- the neon lights on the drone (eye, status dots, tail) go dark until the boot sequence lights them
+function SPAWN.collectLights(rig)
+	local lights = {}
+	local details = rig.model:FindFirstChild("Details")
+	if details then
+		for _, name in ipairs(SPAWN.lightNames) do
+			local part = details:FindFirstChild(name)
+			if part then
+				lights[#lights + 1] = { part = part, color = part.Color, transparency = part.Transparency }
+				part.Transparency = 1
+			end
+		end
+	end
+	return lights
+end
+
+-- extra drone motion while materialising: scale pop with overshoot, decaying spin, rise, shake
+function SPAWN.pose(rig, pose, now)
+	local spawn = rig.spawn
+	if not spawn or spawn.done or not spawn.materializeAt then
+		return pose
+	end
+	local age = now - spawn.materializeAt
+	if age < 0 then
+		return pose
+	end
+	local alpha = math.clamp(age / SPAWN.materialize, 0, 1)
+	local scale = SPAWN.startScale + (1 - SPAWN.startScale) * SPAWN.easeOutBack(alpha)
+	pcall(rig.model.ScaleTo, rig.model, scale)
+
+	local remaining = 1 - alpha
+	local spin = SPAWN.spin * remaining ^ 3 * rig.side
+	local drop = -SPAWN.sink * remaining ^ 2
+	local shake = SPAWN.jitter * remaining ^ 2
+	return pose
+		* CFrame.new(math.sin(age * 71) * shake, drop + math.sin(age * 83 + 1.7) * shake, 0)
+		* CFrame.Angles(0, spin, 0)
+end
+
+function SPAWN.play(rig, index)
+	local spawn = rig.spawn
+	task.wait(spawn.delay + (index - 1) * SPAWN.stagger)
+	-- the player died or respawned during the wait: this intro is void
+	if rig.spawn ~= spawn then
+		return
+	end
+
+	local stage = Instance.new("Folder")
+	stage.Name = "DroneSpawnStage"
+	stage.Parent = workspace
+	Debris:AddItem(stage, SPAWN.stageLife)
+	spawn.stage = stage
+
+	local ignore = FX.ignoreList(stage)
+	local function getFrame()
+		return rig.model:GetPivot()
+	end
+	local function getFloorFrame()
+		return (FX.floorFrameAt(getFrame().Position, ignore, 0.15))
+	end
+
+	-- the drone stays hidden and tiny until ignition, with its lights dark
+	pcall(rig.model.ScaleTo, rig.model, SPAWN.startScale)
+	spawn.lights = SPAWN.collectLights(rig)
+
+	-- charge: core + halo + aura, inward gather, three-axis gyroscope rings, floor circle
+	local startFrame = getFrame()
+	local ball = Enum.PartType.Ball
+	local core = FX.part(stage, ball, SPAWN.hot, 0, Vector3.one * 0.1, startFrame)
+	local halo = FX.part(stage, ball, SPAWN.cyan, 0.45, Vector3.one * 0.2, startFrame)
+	local aura = FX.part(stage, ball, SPAWN.deep, 0.85, Vector3.one * 0.4, startFrame)
+
+	local light = Instance.new("PointLight")
+	light.Color = SPAWN.bright
+	light.Range = 8
+	light.Brightness = 1
+	light.Shadows = false
+	light.Parent = core
+
+	local gatherPart = FX.part(stage, Enum.PartType.Block, SPAWN.hot, 1, Vector3.one * SPAWN.gatherSize, startFrame)
+	local gather = Instance.new("ParticleEmitter")
+	gather.Rate = 0
+	gather.LightEmission = 1
+	gather.LightInfluence = 0
+	gather.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, SPAWN.hot),
+		ColorSequenceKeypoint.new(0.5, SPAWN.bright),
+		ColorSequenceKeypoint.new(1, SPAWN.cyan),
+	})
+	gather.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(0.3, 0.38),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	gather.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.2, 0.1),
+		NumberSequenceKeypoint.new(1, 0.3),
+	})
+	gather.Lifetime = NumberRange.new(0.2, 0.26)
+	gather.Speed = NumberRange.new(26, 30)
+	gather.Rotation = NumberRange.new(0, 360)
+	gather.Drag = 0
+	gather.Acceleration = Vector3.zero
+	pcall(function()
+		gather.Shape = Enum.ParticleEmitterShape.Sphere
+		gather.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
+		gather.ShapeInOut = Enum.ParticleEmitterShapeInOut.Inward
+	end)
+	gather.Parent = gatherPart
+
+	local gates = {
+		{ ring = FX.newRing(stage, SPAWN.gateSegments, SPAWN.bright), tilt = CFrame.new(), radius = SPAWN.gateOuter, spin = 1 },
+		{ ring = FX.newRing(stage, SPAWN.gateSegments, SPAWN.cyan), tilt = CFrame.Angles(math.pi / 2, 0, 0), radius = SPAWN.gateMiddle, spin = -1.3 },
+		{ ring = FX.newRing(stage, SPAWN.gateSegments, SPAWN.hot), tilt = CFrame.Angles(0, math.pi / 2, 0), radius = SPAWN.gateInner, spin = 1.6 },
+	}
+	local floorRing = FX.newRing(stage, SPAWN.floorSegments, SPAWN.cyan)
+	local floorInner = FX.newRing(stage, SPAWN.floorSegments, SPAWN.hot)
+
+	local charged = false
+	local lastBolt = 0
+	FX.run(stage, SPAWN.charge, function(alpha, elapsed)
+		local frame = getFrame()
+		local center = frame.Position
+		local centerFrame = CFrame.new(center)
+		local swell = alpha * alpha * (3 - 2 * alpha)
+		local breath = 1 + 0.07 * math.sin(elapsed * 31)
+		local size = (0.1 + SPAWN.coreSize * swell ^ 1.5) * breath
+		core.Size = Vector3.one * size
+		core.CFrame = centerFrame
+		halo.Size = Vector3.one * size * 2.3
+		halo.CFrame = centerFrame
+		aura.Size = Vector3.one * size * 3.9
+		aura.CFrame = centerFrame
+		light.Brightness = 1 + 6 * swell
+		light.Range = 8 + 12 * swell
+		gatherPart.CFrame = centerFrame
+		gather.Rate = SPAWN.gatherRate * (0.25 + 0.75 * swell)
+
+		-- rings fade in, then collapse onto the core faster and faster
+		local pull = alpha ^ 2.2
+		local appear = math.clamp(alpha / 0.18, 0, 1)
+		for _, gate in ipairs(gates) do
+			local radius = gate.radius + (SPAWN.gateEnd - gate.radius) * pull
+			local thickness = SPAWN.gateThickness * (1 + 0.8 * pull)
+			FX.setRing(gate.ring, frame * gate.tilt, radius, thickness, 1 - 0.92 * appear, elapsed * SPAWN.gateSpin * gate.spin)
+		end
+
+		-- summoning circle burns onto the floor under the drone
+		local grow = 1 - (1 - math.clamp(alpha / 0.4, 0, 1)) ^ 3
+		if grow > 0.01 then
+			local floorFrame = getFloorFrame()
+			FX.setRing(floorRing, floorFrame, SPAWN.floorRadius * grow, 0.14, 1 - 0.9 * appear, elapsed * 2.2)
+			FX.setRing(floorInner, floorFrame, SPAWN.floorRadius * grow * 0.62, 0.1, 1 - 0.8 * appear, -elapsed * 3.1)
+		end
+
+		-- lightning starts crackling off the core once it is swelling
+		if elapsed >= SPAWN.boltStart and elapsed - lastBolt >= SPAWN.boltEvery then
+			lastBolt = elapsed
+			SPAWN.bolt(stage, center, center + FX.randomUnit() * SPAWN.boltReach * (0.5 + 0.8 * swell))
+		end
+	end, function()
+		charged = true
+	end)
+
+	while not charged and stage.Parent do
+		task.wait()
+	end
+	if not stage.Parent or rig.spawn ~= spawn then
+		return
+	end
+
+	-- ignition: the charge blooms into the burst, the drone appears
+	local frame = getFrame()
+	local center = frame.Position
+	local floorFrame = getFloorFrame()
+
+	FX.tween(core, 0.3, { Size = Vector3.one * SPAWN.flareSize, Transparency = 1 })
+	FX.tween(halo, 0.4, { Size = Vector3.one * SPAWN.flareSize * 2.2, Transparency = 1 })
+	FX.tween(aura, 0.55, { Size = Vector3.one * SPAWN.flareSize * 3.6, Transparency = 1 })
+	FX.tween(light, 0.5, { Brightness = 0 })
+	gather.Enabled = false
+	Debris:AddItem(gatherPart, 0.4)
+	for _, gate in ipairs(gates) do
+		FX.destroyRing(gate.ring)
+	end
+	FX.run(stage, 0.45, function(alpha, elapsed)
+		FX.setRing(floorRing, floorFrame, SPAWN.floorRadius * (1 + 0.35 * alpha), 0.14 * (1 - alpha), 0.1 + 0.9 * alpha, elapsed * 2.2)
+		FX.setRing(floorInner, floorFrame, SPAWN.floorRadius * 0.62 * (1 + 0.5 * alpha), 0.1 * (1 - alpha), 0.2 + 0.8 * alpha, -elapsed * 3.1)
+	end, function()
+		FX.destroyRing(floorRing)
+		FX.destroyRing(floorInner)
+	end)
+
+	rig.model.Parent = workspace
+	spawn.materializeAt = os.clock()
+
+	FX.sound(SPAWN.sound, workspace)
+	FX.comboFlash(stage, center, nil, SPAWN.bright, SPAWN.flashRange, SPAWN.flashTime)
+	SPAWN.flare(stage, center, 18, 0.55, SPAWN.hot)
+	SPAWN.flare(stage, center, 10, 0.85, SPAWN.cyan)
+	pcall(FX.m1Shake, SPAWN.shakeTime, rig.side, SPAWN.shakePower)
+
+	-- column of light dropping through the drone, collapsing to a thread
+	local pillarFrame = CFrame.new(center) * CFrame.Angles(0, 0, math.pi / 2)
+	local pillar = FX.part(stage, Enum.PartType.Cylinder, SPAWN.hot, 0.05, Vector3.new(SPAWN.pillarHeight, SPAWN.pillarWidth, SPAWN.pillarWidth), pillarFrame)
+	local pillarGlow = FX.part(stage, Enum.PartType.Cylinder, SPAWN.cyan, 0.55, Vector3.new(SPAWN.pillarHeight, SPAWN.pillarWidth * 2.4, SPAWN.pillarWidth * 2.4), pillarFrame)
+	FX.tween(pillar, SPAWN.pillarTime, { Size = Vector3.new(SPAWN.pillarHeight, 0.05, 0.05), Transparency = 1 })
+	FX.tween(pillarGlow, SPAWN.pillarTime * 1.3, { Size = Vector3.new(SPAWN.pillarHeight, 0.1, 0.1), Transparency = 1 })
+
+	-- shockwaves: front plane, horizontal plane, floor
+	FX.shockRing(stage, frame, {
+		startRadius = 0.6,
+		endRadius = SPAWN.ringRadius,
+		duration = 0.5,
+		thickness = 0.5,
+		color = SPAWN.bright,
+		segments = 40,
+		startTransparency = 0.05,
+	})
+	FX.shockRing(stage, FX.facing(center, Vector3.yAxis), {
+		startRadius = 0.6,
+		endRadius = SPAWN.ringRadius * 0.8,
+		duration = 0.42,
+		thickness = 0.4,
+		color = SPAWN.hot,
+		segments = 40,
+		startTransparency = 0.1,
+	})
+	FX.shockRing(stage, floorFrame, {
+		startRadius = 1,
+		endRadius = SPAWN.floorRingRadius,
+		duration = 0.65,
+		thickness = 0.35,
+		color = SPAWN.cyan,
+		segments = 56,
+		startTransparency = 0.1,
+	})
+	FX.dashRing(stage, floorFrame, {
+		count = 36,
+		fill = 0.5,
+		startTransparency = 0.1,
+		color = SPAWN.hot,
+		duration = 0.8,
+		startRadius = 2,
+		endRadius = SPAWN.floorRingRadius * 0.8,
+		thickness = 0.2,
+		spin = 2.5,
+	})
+
+	-- particle bursts
+	local particleColor = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, SPAWN.hot),
+		ColorSequenceKeypoint.new(0.4, SPAWN.bright),
+		ColorSequenceKeypoint.new(1, SPAWN.deep),
+	})
+	FX.emitAt(stage, CFrame.new(center), SPAWN.particleCount, {
+		color = particleColor,
+		speed = NumberRange.new(20, 55),
+		spread = Vector2.new(180, 180),
+		lifetime = NumberRange.new(0.35, 0.75),
+		size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) }),
+		acceleration = Vector3.new(0, -22, 0),
+		drag = 2,
+	})
+	FX.emitAt(stage, CFrame.new(center), math.floor(SPAWN.particleCount * 0.4), {
+		color = particleColor,
+		speed = NumberRange.new(4, 12),
+		spread = Vector2.new(180, 180),
+		lifetime = NumberRange.new(0.6, 1.1),
+		size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0) }),
+		acceleration = Vector3.zero,
+		drag = 3,
+	})
+	for _ = 1, SPAWN.boltCount do
+		SPAWN.bolt(stage, center, center + FX.randomUnit() * FX.rng:NextNumber(4, 8))
+	end
+
+	-- boot up: lights stutter on (white-hot, settling to their own colours), then the red eye wakes
+	local lights = spawn.lights
+	FX.run(stage, SPAWN.materialize + 0.2, function(_, elapsed)
+		local lit = false
+		for _, window in ipairs(SPAWN.eyeWindows) do
+			if elapsed >= window[1] and elapsed < window[2] then
+				lit = true
+				break
+			end
+		end
+		local settle = math.clamp((elapsed - SPAWN.eyeWake) / SPAWN.eyeSettleTime, 0, 1)
+		for _, entry in ipairs(lights) do
+			entry.part.Transparency = lit and entry.transparency or 1
+			entry.part.Color = SPAWN.eyeFlash:Lerp(entry.color, settle)
+		end
+	end, function()
+		for _, entry in ipairs(lights) do
+			entry.part.Transparency = entry.transparency
+			entry.part.Color = entry.color
+		end
+	end)
+
+	task.delay(SPAWN.eyeWake, function()
+		if not stage.Parent then
+			return
+		end
+		local eyeFrame = rig.model:GetPivot() * CFrame.new(0, 0, -0.12)
+		SPAWN.flare(stage, eyeFrame.Position, SPAWN.eyeStarSize, 0.45, SPAWN.eyeRed, SPAWN.eyeDeep)
+		FX.comboFlash(stage, eyeFrame.Position, nil, SPAWN.eyeRed, 14, 0.5)
+		FX.shockRing(stage, eyeFrame, {
+			startRadius = 0.4,
+			endRadius = SPAWN.eyeRingRadius,
+			duration = 0.4,
+			thickness = 0.16,
+			color = SPAWN.eyeRed,
+			segments = 28,
+			startTransparency = 0.05,
+		})
+	end)
+
+	-- a small magnetic settle as it locks into formation
+	task.delay(SPAWN.settleKickAt, function()
+		if rig.spawn ~= spawn then
+			return
+		end
+		rig.m1Kick = { start = os.clock(), direction = Vector3.yAxis, power = SPAWN.settleKick }
+	end)
+
+	task.wait(SPAWN.materialize + 0.1)
+end
+
+function SPAWN.start(rig, index, delay)
+	local spawn = { materializeAt = nil, done = false, lights = nil, stage = nil, delay = delay or SPAWN.startDelay }
+	rig.spawn = spawn
+	task.spawn(function()
+		local ok, err = pcall(SPAWN.play, rig, index)
+		if not ok then
+			warn("[DroneSpawn] error:", err)
+		end
+		-- a death or respawn replaced this intro while it ran: the new state owns the drone now
+		if rig.spawn ~= spawn then
+			return
+		end
+		-- whatever happened above, the drone ends up visible, full size, lights restored
+		pcall(rig.model.ScaleTo, rig.model, 1)
+		for _, entry in ipairs(spawn.lights or {}) do
+			entry.part.Transparency = entry.transparency
+			entry.part.Color = entry.color
+		end
+		if not rig.model.Parent then
+			rig.model.Parent = workspace
+		end
+		spawn.done = true
+	end)
+end
+
+-- cancels whatever intro is running and takes the drone out of the world (lights put back first)
+function SPAWN.clear(rig)
+	local old = rig.spawn
+	if old then
+		if old.stage then
+			old.stage:Destroy()
+		end
+		for _, entry in ipairs(old.lights or {}) do
+			entry.part.Transparency = entry.transparency
+			entry.part.Color = entry.color
+		end
+	end
+	rig.m1Aim = nil
+	rig.m1Kick = nil
+	rig.model.Parent = nil
+end
+
+-- death: the drones vanish with you and stay hidden (the placeholder keeps the follow loop from starting an intro)
+function SPAWN.hide()
+	for _, rig in ipairs(rigs) do
+		if rig.spawn then
+			SPAWN.clear(rig)
+			rig.spawn = { materializeAt = nil, done = false, lights = nil, stage = nil, dead = true }
+		end
+	end
+end
+
+-- respawn: the drones stay gone for SPAWN.respawnDelay, then the full warp-in plays again
+function SPAWN.respawn()
+	for index, rig in ipairs(rigs) do
+		if rig.spawn then
+			SPAWN.clear(rig)
+			SPAWN.start(rig, index, SPAWN.respawnDelay)
+		end
+	end
+end
+
+function SPAWN.watchCharacter(character)
+	local humanoid = character:WaitForChild("Humanoid")
+	humanoid.Died:Connect(SPAWN.hide)
+end
+
+if player.Character then
+	task.spawn(SPAWN.watchCharacter, player.Character)
+end
+player.CharacterAdded:Connect(function(character)
+	SPAWN.respawn()
+	SPAWN.watchCharacter(character)
+end)
 
 RunService.RenderStepped:Connect(function(dt)
 	local cloneChar = workspace:FindFirstChild("RickPrimeClone")
@@ -6683,7 +7344,10 @@ RunService.RenderStepped:Connect(function(dt)
 	local base = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
 	local a = 1 - math.exp(-dt * CONFIG.Follow)
 
-	for _, r in ipairs(rigs) do
+	for index, r in ipairs(rigs) do
+		if not r.spawn then
+			SPAWN.start(r, index)
+		end
 		local target = base * CFrame.new(r.side * CONFIG.Side, CONFIG.Height, CONFIG.Back)
 		r.cf = r.cf and r.cf:Lerp(target, a) or target
 		local bob = math.sin(t * CONFIG.FloatSpeed + r.phase) * CONFIG.FloatAmp
@@ -6692,8 +7356,8 @@ RunService.RenderStepped:Connect(function(dt)
 			math.sin(t * 0.9 + r.phase) * 0.08,
 			math.sin(t * 1.1 + r.phase) * 0.05
 		)
-		r.model:PivotTo(M1.dronePose(r, r.cf * CFrame.new(0, bob, 0) * sway, t))
-		if not r.model.Parent then r.model.Parent = workspace end
+		r.model:PivotTo(SPAWN.pose(r, M1.dronePose(r, r.cf * CFrame.new(0, bob, 0) * sway, t), t))
+		if not r.model.Parent and (r.spawn.materializeAt or r.spawn.done) then r.model.Parent = workspace end
 	end
 end)
 end)
