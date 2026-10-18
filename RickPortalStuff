@@ -1,3 +1,4 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/NetlessScripter/Vegito-/refs/heads/main/Lock%20On"))()
 Players = game:GetService("Players")
 TweenService = game:GetService("TweenService")
 RunService = game:GetService("RunService")
