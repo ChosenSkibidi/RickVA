@@ -55,9 +55,10 @@ SPIN_SPEED       = 35
 CLOSE_TIME       = 0.4
 PORTAL_LIFETIME  = 25
 
-TRIGGER_SIZE     = Vector3.new(12 * PORTAL_WIDTH_MULT, 9, 3)
-ARM_DELAY        = 0.3
-ENTER_DEPTH      = 0.5
+HIT_PAD          = 0.75
+TOUCH_DEPTH      = 2
+ARM_DELAY        = 0.1
+ENTER_DEPTH      = 0
 ARRIVE_DISTANCE  = 15
 RETURN_PORTAL_OFFSET = 5
 EXIT_PORTAL_FRONT_DISTANCE = 7
@@ -66,6 +67,11 @@ EXIT_WALK_DISTANCE = 6
 EXIT_WALK_LOCK_FACING = true
 EXIT_ANIMATION_ID = "rbxassetid://106876290279410"
 SHOOT_ANIMATION_ID = "rbxassetid://17275150809"
+GUN_IDLE_ANIMATION_ID = "rbxassetid://14357943487"
+GUN_HIDE_ANIMATION_ID = "10470389827"
+GUN_IDLE_REQUIRE_STILL = false
+GUN_RUN_ANIMATION_ID = "rbxassetid://131585091153240"
+RUN_STOP_ANIMATION_ID = "7815618175"
 PORTAL_FOV_SNAP = 95
 PORTAL_FOV_REST = 70
 PORTAL_FOV_ZOOM = 55
@@ -162,7 +168,36 @@ DODGE_ANIMATION_IDS = {
     "14351441234",
     "14299135500",
     "14046756619",
+    "15259161390",
+    "15295895753",
+    "16139108718",
+    "16431491215",
+    "16515503507",
+    "17889458563",
+    "7807831448",
+    "18179181663",
+    "123005629431309",
+    "77509627104305",
+    "125361499827663",
+    "111644455066361",
+    "113371045983638",
+    "101588604872680",
+    "109617620932970",
 }
+KEY_DODGE_ANIMATION_IDS = {
+    "12502664044",
+    "12618271998",
+    "13376962659",
+    "15290930205",
+    "16515850153",
+    "113166426814229",
+    "138932866508108",
+    "121535378064818",
+    "124962465789551",
+    "105442749844047",
+    "125955606488863",
+}
+KEY_DODGE_DELAY = 0.1
 CONDITIONED_DODGE_ANIMATION_IDS = {
     "10469493270",
     "13532562418",
@@ -527,11 +562,65 @@ function makeFace(frame, face)
     return img
 end
 
+wallCuts = {}
+
+function getIgnoreList()
+    local list = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr.Character then
+            table.insert(list, plr.Character)
+        end
+    end
+    local live = workspace:FindFirstChild("Live")
+    if live then
+        for _, m in ipairs(live:GetChildren()) do
+            if m:IsA("Model") and m:FindFirstChildOfClass("Humanoid") then
+                table.insert(list, m)
+            end
+        end
+    end
+    return list
+end
+
+function inPortalEllipse(p, x, y)
+    local rx = (p.hitRX or 0) + HIT_PAD
+    local ry = p.hitRY or 0
+    if ry <= 0 then
+        return false
+    end
+    return (x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1
+end
+
+function castSolid(origin, vec, ignore)
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.RespectCanCollide = false
+    local skip = table.clone(ignore)
+    for _ = 1, 16 do
+        rp.FilterDescendantsInstances = skip
+        local hit = workspace:Raycast(origin, vec, rp)
+        if not hit then
+            return nil
+        end
+        if hit.Instance.CanCollide or wallCuts[hit.Instance] then
+            return hit
+        end
+        table.insert(skip, hit.Instance)
+    end
+    return nil
+end
+
 function destroyPortal(p)
     if p.wallParts then
         for _, part in ipairs(p.wallParts) do
-            if part.Parent then
-                part.CanCollide = true
+            local n = (wallCuts[part] or 1) - 1
+            if n <= 0 then
+                wallCuts[part] = nil
+                if part.Parent then
+                    part.CanCollide = true
+                end
+            else
+                wallCuts[part] = n
             end
         end
         p.wallParts = nil
@@ -549,7 +638,7 @@ function closePortal(p)
         p.stateStart = os.clock()
         p.armed = false
         if p.shotPortal then
-            hideGun()
+            clearGunFx()
         end
     end
 end
@@ -1476,17 +1565,12 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
     if onWall and not decorative then
         overlap = OverlapParams.new()
         overlap.FilterType = Enum.RaycastFilterType.Exclude
-        ignore = {}
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr.Character then
-                table.insert(ignore, plr.Character)
-            end
-        end
-        overlap.FilterDescendantsInstances = ignore
+        overlap.FilterDescendantsInstances = getIgnoreList()
         cutCF = portalCF * CFrame.new(0, 0, WALL_CUT_DEPTH / 2)
-        found = workspace:GetPartBoundsInBox(cutCF, Vector3.new(TRIGGER_SIZE.X, TRIGGER_SIZE.Y, WALL_CUT_DEPTH), overlap)
+        found = workspace:GetPartBoundsInBox(cutCF, Vector3.new(PORTAL_SIZE * widthScale + HIT_PAD * 2, PORTAL_SIZE, WALL_CUT_DEPTH), overlap)
         for _, part in ipairs(found) do
-            if part.CanCollide and not part:IsA("Terrain") then
+            if (part.CanCollide or wallCuts[part]) and not part:IsA("Terrain") then
+                wallCuts[part] = (wallCuts[part] or 0) + 1
                 table.insert(p.wallParts, part)
                 part.CanCollide = false
             end
@@ -1554,6 +1638,7 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         tRoot = (chosenTarget and chosenTarget:IsDescendantOf(workspace)) and chosenTarget or pickTarget()
         chosenTarget = nil
         if not tRoot then
+            p.enterLock = os.clock() + 1.5
             warn("[RickPortal] no other player to teleport to")
             return
         end
@@ -1581,35 +1666,33 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
         if not p.decorative and p.state ~= "closing" then
             char = LocalPlayer.Character
             root = char and char:FindFirstChild("HumanoidRootPart")
-            if root and p.touchMode then
-                if p.armed then
-                    overlap = OverlapParams.new()
-                    overlap.FilterType = Enum.RaycastFilterType.Include
-                    overlap.FilterDescendantsInstances = { char }
-                    if #workspace:GetPartBoundsInBox(portalCF, TRIGGER_SIZE, overlap) > 0 then
-                        enter(root)
-                    end
-                end
-            elseif root then
+            local ready = p.armed and not (p.enterLock and now < p.enterLock)
+            if root then
                 rel = portalCF:PointToObjectSpace(root.Position)
                 prev = p.lastRel
                 p.lastRel = rel
 
-                if p.startSide == nil then
-                    p.startSide = rel.Z >= 0 and 1 or -1
-                elseif math.abs(rel.Z) > ENTER_DEPTH + 1 then
-                    p.startSide = rel.Z > 0 and 1 or -1
-                end
+                if p.touchMode then
+                    if ready and math.abs(rel.Z) <= TOUCH_DEPTH and inPortalEllipse(p, rel.X, rel.Y) then
+                        enter(root)
+                    end
+                else
+                    if p.startSide == nil then
+                        p.startSide = rel.Z >= 0 and 1 or -1
+                    elseif math.abs(rel.Z) > ENTER_DEPTH + 1 then
+                        p.startSide = rel.Z > 0 and 1 or -1
+                    end
 
-                if p.armed and prev then
-                    dPrev = -p.startSide * prev.Z
-                    dNow = -p.startSide * rel.Z
-                    if dPrev < ENTER_DEPTH and dNow >= ENTER_DEPTH then
-                        alpha = (ENTER_DEPTH - dPrev) / (dNow - dPrev)
-                        crossX = prev.X + (rel.X - prev.X) * alpha
-                        crossY = prev.Y + (rel.Y - prev.Y) * alpha
-                        if math.abs(crossX) <= TRIGGER_SIZE.X / 2 and math.abs(crossY) <= TRIGGER_SIZE.Y / 2 then
-                            enter(root)
+                    if ready and prev then
+                        dPrev = -p.startSide * prev.Z
+                        dNow = -p.startSide * rel.Z
+                        if dPrev < ENTER_DEPTH and dNow >= ENTER_DEPTH then
+                            alpha = (ENTER_DEPTH - dPrev) / (dNow - dPrev)
+                            crossX = prev.X + (rel.X - prev.X) * alpha
+                            crossY = prev.Y + (rel.Y - prev.Y) * alpha
+                            if inPortalEllipse(p, crossX, crossY) then
+                                enter(root)
+                            end
                         end
                     end
                 end
@@ -1649,6 +1732,8 @@ function buildPortal(portalCF, decorative, onWall, p, frame, light, enter)
 
         w = math.max(w, 0.05)
         h = math.max(h, 0.05)
+        p.hitRX = math.min(w, PORTAL_SIZE) * widthScale * 0.5
+        p.hitRY = math.min(h, PORTAL_SIZE) * 0.5
 
         frame.Size = Vector3.new(w * widthScale, h, DISC_THICKNESS)
 
@@ -2132,21 +2217,10 @@ function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ign
 
     portalCF = CFrame.lookAt(center, Vector3.new(rootCF.Position.X, center.Y, rootCF.Position.Z))
 
-    rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.RespectCanCollide = true
-    ignore = {}
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr.Character then
-            table.insert(ignore, plr.Character)
-        end
-    end
-    rayParams.FilterDescendantsInstances = ignore
-
     rayOrigin = rootCF.Position + Vector3.new(0, SPAWN_HEIGHT, 0)
     shotVector = center - rayOrigin
     reach = shotVector + shotVector.Unit * WALL_SNAP_DISTANCE
-    hit = workspace:Raycast(rayOrigin, reach, rayParams)
+    hit = castSolid(rayOrigin, reach, getIgnoreList())
     orbEnd = center
     onWall = false
     if hit and math.abs(hit.Normal.Y) < WALL_MAX_NORMAL_Y then
@@ -2167,9 +2241,10 @@ function openPortal(target, char, root, rootCF, center, portalCF, rayParams, ign
     chosenTarget = typeof(target) == "Instance" and target or nil
     chosenArea = (type(target) == "table" and typeof(target.cframe) == "CFrame") and target or nil
     shooting = true
-    showGun()
-    shootTrack = playCharacterAnimation(char, SHOOT_ANIMATION_ID)
-    playSounds(SHOOT_SOUNDS, root)
+    pcall(showGun)
+    local animOk, animTrack = pcall(playCharacterAnimation, char, SHOOT_ANIMATION_ID)
+    shootTrack = animOk and animTrack or nil
+    pcall(playSounds, SHOOT_SOUNDS, root)
     task.spawn(function()
 
         shotTime = math.max(SHOT_TIME * (orbEnd - fromPos).Magnitude / (center - fromPos).Magnitude, 0.08)
@@ -2479,9 +2554,22 @@ function dodgeRequiredFacing(dist)
     return DODGE_FACING_NEAR + (DODGE_FACING_FAR - DODGE_FACING_NEAR) * smooth
 end
 
+function animIdIs(animationId, id)
+    return string.match(animationId, "(%d+)%s*$") == id
+end
+
 function isConditionedDodgeAnimation(animationId)
     for _, id in ipairs(CONDITIONED_DODGE_ANIMATION_IDS) do
-        if string.find(animationId, id, 1, true) then
+        if animIdIs(animationId, id) then
+            return true
+        end
+    end
+    return false
+end
+
+function isKeyDodgeAnimation(animationId)
+    for _, id in ipairs(KEY_DODGE_ANIMATION_IDS) do
+        if animIdIs(animationId, id) then
             return true
         end
     end
@@ -2489,11 +2577,11 @@ function isConditionedDodgeAnimation(animationId)
 end
 
 function isDodgeAnimation(animationId)
-    if isConditionedDodgeAnimation(animationId) then
+    if isConditionedDodgeAnimation(animationId) or isKeyDodgeAnimation(animationId) then
         return true
     end
     for _, id in ipairs(DODGE_ANIMATION_IDS) do
-        if string.find(animationId, id, 1, true) then
+        if animIdIs(animationId, id) then
             return true
         end
     end
@@ -3180,7 +3268,23 @@ function isDodgeBlockedByAnimation(character, humanoid, animator)
     return false
 end
 
-function startDodge(attackerChar, attackerId, nextCount, playStreakVoice, playVoice)
+function pressDodgeKey()
+    task.wait(KEY_DODGE_DELAY)
+    if keypress and keyrelease then
+        pcall(keypress, 0x31)
+        task.wait(0.05)
+        pcall(keyrelease, 0x31)
+    else
+        pcall(function()
+            local vim = game:GetService("VirtualInputManager")
+            vim:SendKeyEvent(true, Enum.KeyCode.One, false, game)
+            task.wait(0.05)
+            vim:SendKeyEvent(false, Enum.KeyCode.One, false, game)
+        end)
+    end
+end
+
+function startDodge(attackerChar, attackerId, nextCount, playStreakVoice, playVoice, pressKey)
     if failsafe.retreating or os.clock() < dodge.cooldownEnd or isDodgeBlockedByAnimation() then return end
 
     attackerId = Players:GetPlayerFromCharacter(attackerChar) or attackerChar
@@ -3198,6 +3302,9 @@ function startDodge(attackerChar, attackerId, nextCount, playStreakVoice, playVo
         dodgeStreak.count = playStreakVoice and 0 or nextCount
         lockCameraOn(attackerChar:FindFirstChild("HumanoidRootPart"), DODGE_CAMERA_LOCK_TIME)
         task.spawn(clickMouse)
+        if pressKey then
+            task.spawn(pressDodgeKey)
+        end
         if playStreakVoice then
             rickSay(RICK_QUIT_LINES)
         end
@@ -3220,7 +3327,7 @@ dodgeConn = RunService.Heartbeat:Connect(function()
                     if anim and isDodgeAnimation(anim.AnimationId) then
                         current[track] = true
                         if not (previous and previous[track]) and shouldDodge(char, isConditionedDodgeAnimation(anim.AnimationId) and CONDITIONED_DODGE_RANGE or DODGE_RANGE, isConditionedDodgeAnimation(anim.AnimationId)) then
-                            startDodge(char)
+                            startDodge(char, nil, nil, nil, nil, isKeyDodgeAnimation(anim.AnimationId))
                         end
                     end
                 end
@@ -3620,7 +3727,7 @@ function stopGunAnimation()
     end
 end
 
-function hideGun()
+function destroyGun()
     stopGunAnimation()
     if gunArmWeld then
         gunArmWeld:Destroy()
@@ -3632,7 +3739,23 @@ function hideGun()
     end
 end
 
+function hideGun()
+end
+
+function clearGunFx()
+    if gunHolder then
+        for _, d in ipairs(gunHolder:GetDescendants()) do
+            if d.Name == "PortalIdleFx" then
+                d:Destroy()
+            end
+        end
+    end
+end
+
 function showGun()
+    if gunHiddenByAnim or (gunHolder and gunHolder.Parent) then
+        return
+    end
     local character = LocalPlayer.Character
     if character then
         attachGunToRightArm(character)
@@ -3695,7 +3818,7 @@ function attachGunToRightArm(character)
         return nil
     end
 
-    hideGun()
+    destroyGun()
 
     local template = loadGunTemplate()
     if not template then
@@ -3746,10 +3869,180 @@ function attachGunToRightArm(character)
 end
 
 characterConn = LocalPlayer.CharacterAdded:Connect(function()
-    hideGun()
+    destroyGun()
 end)
 
 task.spawn(loadGunTemplate)
+
+gunHiddenByAnim = false
+gunRetryAt = 0
+gunKeeperConn = nil
+idleAnimator = nil
+idleAnimation = nil
+idleTrack = nil
+runAnimation = nil
+runTrack = nil
+animStopConn = nil
+
+function isRunning(humanoid)
+    local state = humanoid:GetState()
+    return (state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.RunningNoPhysics)
+        and humanoid.MoveDirection.Magnitude > 0.1
+end
+
+function stopRunOverride()
+    if not (runTrack and runTrack.IsPlaying and idleAnimator) then
+        return
+    end
+    for _, track in ipairs(idleAnimator:GetPlayingAnimationTracks()) do
+        local a = track.Animation
+        if a and string.find(a.AnimationId, RUN_STOP_ANIMATION_ID, 1, true) then
+            track:Stop(0)
+        end
+    end
+end
+
+function hasPlayingAnim(animator, idNumber)
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        local a = track.Animation
+        if a and string.find(a.AnimationId, idNumber, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+function wantsGunIdle(humanoid)
+    local state = humanoid:GetState()
+    if state == Enum.HumanoidStateType.Dead
+        or state == Enum.HumanoidStateType.Physics
+        or state == Enum.HumanoidStateType.Ragdoll
+        or state == Enum.HumanoidStateType.FallingDown
+        or state == Enum.HumanoidStateType.PlatformStanding
+        or state == Enum.HumanoidStateType.Seated then
+        return false
+    end
+    if isRunning(humanoid) then
+        return false
+    end
+    local still = humanoid.MoveDirection.Magnitude < 0.1 and humanoid.FloorMaterial ~= Enum.Material.Air
+    if GUN_IDLE_REQUIRE_STILL then
+        return still
+    end
+    return still or state == Enum.HumanoidStateType.Running or state == Enum.HumanoidStateType.RunningNoPhysics
+end
+
+function gunKeeperStep()
+    local character = LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
+    if not animator or humanoid.Health <= 0 then
+        return
+    end
+
+    if animator ~= idleAnimator then
+        idleAnimator = animator
+        idleTrack = nil
+        runTrack = nil
+        if not idleAnimation then
+            idleAnimation = Instance.new("Animation")
+            idleAnimation.AnimationId = GUN_IDLE_ANIMATION_ID
+        end
+        if not runAnimation then
+            runAnimation = Instance.new("Animation")
+            runAnimation.AnimationId = GUN_RUN_ANIMATION_ID
+        end
+        local ok, track = pcall(function()
+            return animator:LoadAnimation(idleAnimation)
+        end)
+        if ok and track then
+            track.Priority = Enum.AnimationPriority.Idle
+            track.Looped = true
+            idleTrack = track
+        end
+        local okR, trackR = pcall(function()
+            return animator:LoadAnimation(runAnimation)
+        end)
+        if okR and trackR then
+            trackR.Priority = Enum.AnimationPriority.Movement
+            trackR.Looped = true
+            runTrack = trackR
+        end
+    end
+    if runTrack then
+        if isRunning(humanoid) then
+            if not runTrack.IsPlaying then
+                runTrack:Play(0.15)
+            end
+        elseif runTrack.IsPlaying then
+            runTrack:Stop(0.15)
+        end
+    end
+    if idleTrack then
+        if wantsGunIdle(humanoid) then
+            if not idleTrack.IsPlaying then
+                idleTrack:Play(0.2)
+            end
+        elseif idleTrack.IsPlaying then
+            idleTrack:Stop(0.2)
+        end
+    end
+
+    if hasPlayingAnim(animator, GUN_HIDE_ANIMATION_ID) then
+        gunHiddenByAnim = true
+        if gunHolder then
+            destroyGun()
+        end
+    else
+        gunHiddenByAnim = false
+        if not (gunHolder and gunHolder.Parent) and os.clock() >= gunRetryAt and character:FindFirstChild("Right Arm") then
+            local holder = attachGunToRightArm(character)
+            gunRetryAt = os.clock() + (holder and 0.25 or 2)
+        end
+    end
+end
+
+function gunKeeperCleanup()
+    if gunKeeperConn then
+        gunKeeperConn:Disconnect()
+        gunKeeperConn = nil
+    end
+    if idleTrack then
+        pcall(function()
+            idleTrack:Stop(0)
+            idleTrack:Destroy()
+        end)
+        idleTrack = nil
+    end
+    if idleAnimation then
+        idleAnimation:Destroy()
+        idleAnimation = nil
+    end
+    if animStopConn then
+        animStopConn:Disconnect()
+        animStopConn = nil
+    end
+    if runTrack then
+        pcall(function()
+            runTrack:Stop(0)
+            runTrack:Destroy()
+        end)
+        runTrack = nil
+    end
+    if runAnimation then
+        runAnimation:Destroy()
+        runAnimation = nil
+    end
+    idleAnimator = nil
+    destroyGun()
+end
+
+gunKeeperConn = RunService.Heartbeat:Connect(function()
+    pcall(gunKeeperStep)
+end)
+animStopConn = RunService.PreAnimation:Connect(function()
+    pcall(stopRunOverride)
+end)
 
 function buildPortalButton()
     PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -6726,7 +7019,7 @@ _G.RickPortal = {
             bloom:Destroy()
             bloom = nil
         end
-        hideGun()
+        gunKeeperCleanup()
         gunTemplate = nil
         for p in pairs(portals) do
             destroyPortal(p)
