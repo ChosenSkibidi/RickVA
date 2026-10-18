@@ -175,7 +175,6 @@ DODGE_ANIMATION_IDS = {
     "16431491215",
     "16515503507",
     "17889458563",
-    "7807831448",
     "18179181663",
     "123005629431309",
     "77509627104305",
@@ -2681,12 +2680,36 @@ function isStreakVoicePlaying()
     return dodgeStreak.sound ~= nil and dodgeStreak.sound.Parent ~= nil and dodgeStreak.sound.IsPlaying
 end
 
+-- a dodge sfx can never stack with itself: a repeat of the same sound inside this gap is dropped, and a
+-- later one cuts the old copy off first. the state lives in _G so a duplicate copy of the script shares it
+DODGE_SFX_MIN_GAP = 0.35
+_G.__RickDodgeSfx = _G.__RickDodgeSfx or {}
+
+function playDodgeSfx(snd, root, state, now, sound)
+    state = _G.__RickDodgeSfx[snd.file]
+    if not state then
+        state = { startedAt = -math.huge, sound = nil }
+        _G.__RickDodgeSfx[snd.file] = state
+    end
+    now = os.clock()
+    if now - state.startedAt < DODGE_SFX_MIN_GAP then
+        return nil
+    end
+    if state.sound and state.sound.Parent then
+        state.sound:Destroy()
+    end
+    sound = playSounds({ { id = snd.asset, volume = snd.volume } }, root)
+    state.startedAt = now
+    state.sound = sound
+    return sound
+end
+
 function playDodgeArrival(character, root, playVoice, playStreakVoice, sound)
     flashDodgeHighlight(character)
     for _, snd in ipairs(DODGE_SOUNDS) do
         if snd.asset and (snd ~= DODGE_VOICE or (playVoice and not isStreakVoicePlaying())) and (snd ~= DODGE_STREAK_VOICE or playStreakVoice) then
-            sound = playSounds({ { id = snd.asset, volume = snd.volume } }, root)
-            if snd == DODGE_STREAK_VOICE then
+            sound = playDodgeSfx(snd, root)
+            if snd == DODGE_STREAK_VOICE and sound then
                 dodgeStreak.sound = sound
             end
         end
