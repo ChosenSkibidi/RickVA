@@ -79,8 +79,8 @@ local LEGACY_WIELD_NAME = "RickPrimeGunWield"
 local BASE_SHOULDER_ATTRIBUTE = "RickPrimeGunBaseC0"
 local GUN_ANIMATION_ID = "rbxassetid://80488470577181"
 local GUN_ANIMATION_PRIORITY = Enum.AnimationPriority.Action4
-local GRIP_TILT_ANGLE = math.rad(-16)
-local GUN_ORIGIN_SHIFT = CFrame.new(0, -0.045, -0.315)
+local GRIP_TILT_ANGLE = math.rad(-8)
+local GUN_ORIGIN_SHIFT = CFrame.new(0, -0.074, -0.323)
 local GUN_SCALE = 0.6
 local GUN_REST_C0 = CFrame.new(0, -1, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
 local GUN_RETURN_DELAY = 4
@@ -175,26 +175,30 @@ local VFX = {
 	},
 }
 
-local COLOR_BODY_NAVY = Color3.fromRGB(10, 16, 34)
-local COLOR_BODY_EDGE = Color3.fromRGB(26, 36, 64)
-local COLOR_REAR_SHELL = Color3.fromRGB(24, 20, 36)
-local COLOR_MUZZLE_GRAY = Color3.fromRGB(62, 68, 78)
-local COLOR_MUZZLE_BEVEL = Color3.fromRGB(83, 95, 110)
-local COLOR_MUZZLE_PLUG = Color3.fromRGB(140, 148, 154)
-local COLOR_LOWER_FRAME = Color3.fromRGB(63, 69, 93)
-local COLOR_FRAME_POCKET = Color3.fromRGB(17, 26, 47)
-local COLOR_RED_PANEL = Color3.fromRGB(150, 26, 29)
-local COLOR_TRIGGER = Color3.fromRGB(167, 175, 179)
-local COLOR_GRIP_NAVY = Color3.fromRGB(21, 22, 34)
-local COLOR_PANEL_BORDER = Color3.fromRGB(52, 55, 73)
-local COLOR_PANEL_SCREEN = Color3.fromRGB(4, 18, 31)
-local COLOR_BASE_BLOCK = Color3.fromRGB(55, 54, 68)
-local COLOR_BASE_PLATE = Color3.fromRGB(62, 63, 74)
+local COLOR_INSET_BLACK = Color3.fromRGB(19, 16, 27)
+local COLOR_BODY_SLATE = Color3.fromRGB(46, 41, 53)
+local COLOR_RIM_GRAY = Color3.fromRGB(70, 64, 74)
+local COLOR_FRAME_POST = Color3.fromRGB(88, 82, 92)
+local COLOR_MUZZLE_GRAY = Color3.fromRGB(96, 91, 99)
+local COLOR_BORE_RING = Color3.fromRGB(206, 206, 212)
+local COLOR_BORE_HOLE = Color3.fromRGB(8, 7, 11)
+local COLOR_RED_GLOW = Color3.fromRGB(232, 4, 8)
+local COLOR_RED_FADE_END = Color3.fromRGB(58, 8, 14)
+local COLOR_TRIGGER = Color3.fromRGB(214, 214, 219)
+local COLOR_TRIGGER_STEM = Color3.fromRGB(58, 54, 64)
+local COLOR_GRIP_BODY = Color3.fromRGB(27, 24, 37)
+local COLOR_PANEL_BORDER = Color3.fromRGB(64, 60, 74)
+local COLOR_PANEL_SCREEN = Color3.fromRGB(9, 8, 17)
+local COLOR_BASE_BLOCK = Color3.fromRGB(50, 47, 61)
+local COLOR_BASE_PLATE = Color3.fromRGB(74, 71, 87)
 
 local function createGunPart(gunModel, handle, partName, partShape, partSize, partOffset, partColor, partMaterial)
-	local gunPart = Instance.new("Part")
+	local isWedge = partShape == "Wedge"
+	local gunPart = Instance.new(isWedge and "WedgePart" or "Part")
 	gunPart.Name = partName
-	gunPart.Shape = partShape
+	if not isWedge then
+		gunPart.Shape = partShape
+	end
 	gunPart.Size = partSize * GUN_SCALE
 	gunPart.Color = partColor
 	gunPart.Material = partMaterial
@@ -218,6 +222,34 @@ local function createGunPart(gunModel, handle, partName, partShape, partSize, pa
 	return gunPart
 end
 
+local function wedgeRisesTowardPositiveZ()
+	local probeSucceeded, risesTowardBack = pcall(function()
+		local probeWedge = Instance.new("WedgePart")
+		probeWedge.Size = Vector3.new(1, 1, 1)
+		probeWedge.Anchored = true
+		probeWedge.CanCollide = false
+		probeWedge.CanQuery = true
+		probeWedge.Transparency = 1
+		probeWedge.CFrame = CFrame.new(0, 5000, 0)
+		probeWedge.Parent = workspace
+
+		local probeParams = RaycastParams.new()
+		probeParams.FilterType = Enum.RaycastFilterType.Include
+		probeParams.FilterDescendantsInstances = { probeWedge }
+
+		local probeCenter = probeWedge.Position
+		local backHit = workspace:Raycast(probeCenter + Vector3.new(0, 2, 0.4), Vector3.new(0, -4, 0), probeParams)
+		local frontHit = workspace:Raycast(probeCenter + Vector3.new(0, 2, -0.4), Vector3.new(0, -4, 0), probeParams)
+		probeWedge:Destroy()
+
+		if not (backHit and frontHit) then
+			return true
+		end
+		return backHit.Position.Y > frontHit.Position.Y
+	end)
+	return not probeSucceeded or risesTowardBack
+end
+
 local function buildGunTemplate()
 	local gunModel = Instance.new("Model")
 	gunModel.Name = GUN_MODEL_NAME
@@ -236,57 +268,68 @@ local function buildGunTemplate()
 
 	local block = Enum.PartType.Block
 	local cylinder = Enum.PartType.Cylinder
+	local wedge = "Wedge"
 	local metal = Enum.Material.Metal
 	local neon = Enum.Material.Neon
 	local smoothPlastic = Enum.Material.SmoothPlastic
 
-	local gripTopFrame = CFrame.new(0, 0.55, 0.17) * CFrame.Angles(GRIP_TILT_ANGLE, 0, 0)
+	local gripTopFrame = CFrame.new(0, 0.52, 0.26) * CFrame.Angles(GRIP_TILT_ANGLE, 0, 0)
 	local lengthwiseAlignment = CFrame.Angles(0, math.rad(90), 0)
 	local sideSigns = { -1, 1 }
 
-	createGunPart(gunModel, handle, "Grip", block, Vector3.new(0.42, 1.05, 0.55), gripTopFrame * CFrame.new(0, -0.525, 0), COLOR_GRIP_NAVY, smoothPlastic)
-	createGunPart(gunModel, handle, "GripBase", block, Vector3.new(0.5, 0.36, 0.8), gripTopFrame * CFrame.new(0, -1.21, 0.04), COLOR_BASE_BLOCK, smoothPlastic)
-	createGunPart(gunModel, handle, "GripBasePlate", block, Vector3.new(0.42, 0.05, 0.62), gripTopFrame * CFrame.new(0, -1.385, 0.04), COLOR_BASE_PLATE, metal)
+	createGunPart(gunModel, handle, "Grip", block, Vector3.new(0.4, 0.9, 0.56), gripTopFrame * CFrame.new(0, -0.45, 0), COLOR_GRIP_BODY, smoothPlastic)
+	createGunPart(gunModel, handle, "GripBase", block, Vector3.new(0.5, 0.36, 0.78), gripTopFrame * CFrame.new(0, -1.08, 0), COLOR_BASE_BLOCK, smoothPlastic)
 
 	for _, sideSign in ipairs(sideSigns) do
 		local sideName = sideSign < 0 and "Left" or "Right"
-		createGunPart(gunModel, handle, "GripPanelBorder" .. sideName, block, Vector3.new(0.02, 0.5, 0.34), gripTopFrame * CFrame.new(sideSign * 0.215, -0.36, 0), COLOR_PANEL_BORDER, smoothPlastic)
-		createGunPart(gunModel, handle, "GripPanelScreen" .. sideName, block, Vector3.new(0.025, 0.4, 0.25), gripTopFrame * CFrame.new(sideSign * 0.218, -0.36, 0), COLOR_PANEL_SCREEN, smoothPlastic)
+		createGunPart(gunModel, handle, "GripPanelBorder" .. sideName, block, Vector3.new(0.02, 0.64, 0.42), gripTopFrame * CFrame.new(sideSign * 0.205, -0.38, 0), COLOR_PANEL_BORDER, smoothPlastic)
+		createGunPart(gunModel, handle, "GripPanelScreen" .. sideName, block, Vector3.new(0.025, 0.54, 0.34), gripTopFrame * CFrame.new(sideSign * 0.2065, -0.38, 0), COLOR_PANEL_SCREEN, smoothPlastic)
+		createGunPart(gunModel, handle, "GripBasePlate" .. sideName, block, Vector3.new(0.02, 0.26, 0.64), gripTopFrame * CFrame.new(sideSign * 0.255, -1.08, 0), COLOR_BASE_PLATE, smoothPlastic)
 	end
 
-	createGunPart(gunModel, handle, "Slide", block, Vector3.new(0.42, 0.5, 1.5), CFrame.new(0, 0.78, -0.55), COLOR_BODY_NAVY, smoothPlastic)
-	createGunPart(gunModel, handle, "RearShell", block, Vector3.new(0.42, 0.46, 0.32), CFrame.new(0, 0.76, 0.36), COLOR_REAR_SHELL, smoothPlastic)
+	createGunPart(gunModel, handle, "SlideRear", block, Vector3.new(0.42, 0.54, 1.1), CFrame.new(0, 0.79, -0.03), COLOR_INSET_BLACK, smoothPlastic)
+	createGunPart(gunModel, handle, "SlideFront", block, Vector3.new(0.42, 0.47, 0.94), CFrame.new(0, 0.755, -1.05), COLOR_INSET_BLACK, smoothPlastic)
+	createGunPart(gunModel, handle, "TopPlateRear", block, Vector3.new(0.44, 0.04, 1.1), CFrame.new(0, 1.04, -0.03), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "TopPlateFront", block, Vector3.new(0.44, 0.08, 0.94), CFrame.new(0, 0.95, -1.05), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "RearSightNub", block, Vector3.new(0.14, 0.045, 0.13), CFrame.new(0, 1.0825, 0.225), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "FrameTopBar", block, Vector3.new(0.38, 0.06, 1.54), CFrame.new(0, 0.49, -0.75), COLOR_RIM_GRAY, smoothPlastic)
+
+	local redPanelStartZ = 0.15
+	local redPanelBrightLength = 0.27
+	local redPanelCenterY = 0.825
+	local redPanelHeight = 0.29
+	local redFadeSliceCount = 6
+	local redFadeSliceLength = 0.043
 
 	for _, sideSign in ipairs(sideSigns) do
 		local sideName = sideSign < 0 and "Left" or "Right"
-		createGunPart(gunModel, handle, "SlideEdgeRail" .. sideName, cylinder, Vector3.new(1.82, 0.1, 0.1), CFrame.new(sideSign * 0.16, 1.0, -0.4) * lengthwiseAlignment, COLOR_BODY_EDGE, smoothPlastic)
-		createGunPart(gunModel, handle, "RedPanel" .. sideName, block, Vector3.new(0.03, 0.26, 0.6), CFrame.new(sideSign * 0.215, 0.88, -0.1), COLOR_RED_PANEL, neon)
-		createGunPart(gunModel, handle, "FramePocket" .. sideName, block, Vector3.new(0.02, 0.1, 0.8), CFrame.new(sideSign * 0.225, 0.43, -0.72), COLOR_FRAME_POCKET, smoothPlastic)
+		createGunPart(gunModel, handle, "SlideBottomRail" .. sideName, block, Vector3.new(0.02, 0.05, 2.04), CFrame.new(sideSign * 0.215, 0.545, -0.5), COLOR_RIM_GRAY, smoothPlastic)
+		createGunPart(gunModel, handle, "RedPanelBright" .. sideName, block, Vector3.new(0.03, redPanelHeight, redPanelBrightLength), CFrame.new(sideSign * 0.2165, redPanelCenterY, redPanelStartZ - redPanelBrightLength / 2), COLOR_RED_GLOW, neon)
+		for sliceIndex = 1, redFadeSliceCount do
+			local fadeProgress = sliceIndex / redFadeSliceCount
+			local sliceCenterZ = redPanelStartZ - redPanelBrightLength - redFadeSliceLength * (sliceIndex - 0.5)
+			createGunPart(gunModel, handle, "RedPanelFade" .. sliceIndex .. sideName, block, Vector3.new(0.03, redPanelHeight, redFadeSliceLength), CFrame.new(sideSign * 0.2165, redPanelCenterY, sliceCenterZ), COLOR_RED_GLOW:Lerp(COLOR_RED_FADE_END, fadeProgress), fadeProgress < 0.6 and neon or smoothPlastic)
+		end
 	end
 
-	createGunPart(gunModel, handle, "RedPanelTop", block, Vector3.new(0.2, 0.03, 0.6), CFrame.new(0, 1.04, -0.1), COLOR_RED_PANEL, neon)
-	createGunPart(gunModel, handle, "LowerFrame", block, Vector3.new(0.44, 0.2, 1.25), CFrame.new(0, 0.43, -0.72), COLOR_LOWER_FRAME, smoothPlastic)
+	createGunPart(gunModel, handle, "RedPanelTop", block, Vector3.new(0.22, 0.012, 0.53), CFrame.new(0, 1.066, -0.115), COLOR_RED_GLOW, neon)
 
-	createGunPart(gunModel, handle, "MuzzleBlock", block, Vector3.new(0.5, 0.62, 0.5), CFrame.new(0, 0.78, -1.55), COLOR_MUZZLE_GRAY, smoothPlastic)
-	createGunPart(gunModel, handle, "MuzzleTopBevel", block, Vector3.new(0.5, 0.05, 0.5), CFrame.new(0, 1.115, -1.55), COLOR_MUZZLE_BEVEL, smoothPlastic)
-	createGunPart(gunModel, handle, "MuzzleFrontChamfer", block, Vector3.new(0.5, 0.05, 0.22), CFrame.new(0, 1.07, -1.76) * CFrame.Angles(math.rad(-40), 0, 0), COLOR_MUZZLE_BEVEL, smoothPlastic)
-	createGunPart(gunModel, handle, "MuzzlePlug", cylinder, Vector3.new(0.12, 0.24, 0.24), CFrame.new(0, 0.85, -1.84) * lengthwiseAlignment, COLOR_MUZZLE_PLUG, metal)
+	createGunPart(gunModel, handle, "MuzzleBlock", block, Vector3.new(0.48, 0.58, 0.38), CFrame.new(0, 0.71, -1.71), COLOR_MUZZLE_GRAY, smoothPlastic)
+	local muzzleWedgeFacing = wedgeRisesTowardPositiveZ() and CFrame.Angles(0, math.pi, 0) or CFrame.new()
+	createGunPart(gunModel, handle, "MuzzleRearWedge", wedge, Vector3.new(0.48, 0.58, 0.3), CFrame.new(0, 0.71, -1.37) * muzzleWedgeFacing, COLOR_MUZZLE_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "MuzzleBoreRing", cylinder, Vector3.new(0.02, 0.22, 0.22), CFrame.new(0, 0.78, -1.905) * lengthwiseAlignment, COLOR_BORE_RING, metal)
+	createGunPart(gunModel, handle, "MuzzlePlug", cylinder, Vector3.new(0.04, 0.18, 0.18), CFrame.new(0, 0.78, -1.9) * lengthwiseAlignment, COLOR_BORE_HOLE, smoothPlastic)
 
-	local triggerCenterY = 0.4
-	local triggerCenterZ = -0.3
-	local triggerRadius = 0.14
-	local triggerSegmentCount = 8
-	local triggerStartAngle = math.rad(200)
-	local triggerEndAngle = math.rad(340)
+	createGunPart(gunModel, handle, "FrameBottomBar", block, Vector3.new(0.42, 0.14, 1.58), CFrame.new(0, 0.17, -0.77), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "FrameFrontLip", block, Vector3.new(0.42, 0.12, 0.06), CFrame.new(0, 0.3, -1.53), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "FramePostFront", block, Vector3.new(0.4, 0.22, 0.3), CFrame.new(0, 0.35, -1.37), COLOR_FRAME_POST, smoothPlastic)
+	createGunPart(gunModel, handle, "FrameInsetBlock", block, Vector3.new(0.34, 0.22, 0.48), CFrame.new(0, 0.35, -0.98), COLOR_INSET_BLACK, smoothPlastic)
+	createGunPart(gunModel, handle, "FramePostRear", block, Vector3.new(0.36, 0.22, 0.22), CFrame.new(0, 0.35, -0.09), COLOR_BODY_SLATE, smoothPlastic)
+	createGunPart(gunModel, handle, "WindowRimFront", block, Vector3.new(0.36, 0.22, 0.03), CFrame.new(0, 0.35, -0.755), COLOR_RIM_GRAY, smoothPlastic)
+	createGunPart(gunModel, handle, "WindowRimRear", block, Vector3.new(0.38, 0.22, 0.03), CFrame.new(0, 0.35, -0.185), COLOR_RIM_GRAY, smoothPlastic)
 
-	for segmentIndex = 0, triggerSegmentCount - 1 do
-		local arcProgress = segmentIndex / (triggerSegmentCount - 1)
-		local arcAngle = triggerStartAngle + (triggerEndAngle - triggerStartAngle) * arcProgress
-		local segmentY = triggerCenterY + triggerRadius * math.sin(arcAngle)
-		local segmentZ = triggerCenterZ + triggerRadius * math.cos(arcAngle)
-		local segmentTilt = math.atan2(-math.cos(arcAngle), -math.sin(arcAngle))
-		createGunPart(gunModel, handle, "TriggerSegment" .. segmentIndex, block, Vector3.new(0.1, 0.045, 0.075), CFrame.new(0, segmentY, segmentZ) * CFrame.Angles(segmentTilt, 0, 0), COLOR_TRIGGER, smoothPlastic)
-	end
+	createGunPart(gunModel, handle, "Trigger", cylinder, Vector3.new(0.07, 0.17, 0.32), CFrame.new(0, 0.345, -0.46) * CFrame.Angles(math.rad(-10), 0, 0), COLOR_TRIGGER, smoothPlastic)
+	createGunPart(gunModel, handle, "TriggerStem", block, Vector3.new(0.05, 0.07, 0.1), CFrame.new(0, 0.445, -0.32), COLOR_TRIGGER_STEM, smoothPlastic)
 
 	return gunModel
 end
