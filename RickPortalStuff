@@ -1,509 +1,3 @@
-do
-    local CFG = {
-        -- public JSON ban list (GitHub raw caches ~5 min, so bans can take that long)
-        BAN_LIST_URL    = "https://raw.githubusercontent.com/ChosenSkibidi/RickVA/refs/heads/main/bans.json",
-        -- optional: your own endpoint that accepts authenticated ban/unban POSTs.
-        -- leave "" to use the copy-to-clipboard flow and edit bans.json by hand.
-        ADMIN_API_URL   = "",
-        -- Admin accounts as salted hashes. No username or UserId appears anywhere in the
-        -- script; an account is only admin if its hash is listed here (and SALT is unchanged).
-        ADMIN_HASHES    = { "e7716d783616cd37512eb2ed91d8eac89781b2659681af8aa44d96d44bc49184" },
-        -- Hash of BAN_LIST_URL. If the URL is removed, emptied or edited, everyone except
-        -- an admin is kicked on every run. After changing the URL, an admin runs
-        --   _G.RickGuard.HashUrl("https://new-url")
-        -- and pastes the printed value here.
-        URL_HASH        = "2da83effefb8e42a46c2c9820218be1ee383e91b4994c4d07df912a5f67c49c9",
-        -- true = kick when the ban list can't be loaded and there is no cached copy
-        FAIL_CLOSED     = false,
-        RECHECK_SECONDS = 60,
-        -- change these to your own random strings
-        SALT            = "rp::043e831ce22f7c885c01cca508acae93",
-    }
-
-    local Players = game:GetService("Players")
-    local HttpService = game:GetService("HttpService")
-    local LocalPlayer = Players.LocalPlayer
-
-    -- -----------------------------------------------------------------------
-    -- SHA-256 (pure Lua on bit32)
-    -- -----------------------------------------------------------------------
-    local MOD = 4294967296
-    local band, bxor, bnot = bit32.band, bit32.bxor, bit32.bnot
-    local rshift, rrotate = bit32.rshift, bit32.rrotate
-    local unpack = table.unpack or unpack
-
-    local K = {
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-        0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-        0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-        0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-        0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-        0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-        0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-    }
-
-    -- returns the 32 digest bytes as a table of numbers
-    local function sha256(msg)
-        local len = #msg
-        local bits = len * 8
-        local hi, lo = math.floor(bits / MOD), bits % MOD
-        msg = msg .. "\128" .. string.rep("\0", (55 - len) % 64)
-            .. string.char(
-                band(rshift(hi, 24), 255), band(rshift(hi, 16), 255), band(rshift(hi, 8), 255), band(hi, 255),
-                band(rshift(lo, 24), 255), band(rshift(lo, 16), 255), band(rshift(lo, 8), 255), band(lo, 255)
-            )
-
-        local H = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 }
-
-        for chunk = 1, #msg, 64 do
-            local w = {}
-            for i = 0, 15 do
-                local a, b, c, d = string.byte(msg, chunk + i * 4, chunk + i * 4 + 3)
-                w[i] = a * 16777216 + b * 65536 + c * 256 + d
-            end
-            for i = 16, 63 do
-                local w15, w2 = w[i - 15], w[i - 2]
-                local s0 = bxor(rrotate(w15, 7), rrotate(w15, 18), rshift(w15, 3))
-                local s1 = bxor(rrotate(w2, 17), rrotate(w2, 19), rshift(w2, 10))
-                w[i] = (w[i - 16] + s0 + w[i - 7] + s1) % MOD
-            end
-
-            local a, b, c, d, e, f, g, h = unpack(H)
-            for i = 0, 63 do
-                local S1 = bxor(rrotate(e, 6), rrotate(e, 11), rrotate(e, 25))
-                local ch = bxor(band(e, f), band(bnot(e), g))
-                local t1 = (h + S1 + ch + K[i + 1] + w[i]) % MOD
-                local S0 = bxor(rrotate(a, 2), rrotate(a, 13), rrotate(a, 22))
-                local maj = bxor(band(a, b), band(a, c), band(b, c))
-                local t2 = (S0 + maj) % MOD
-                h, g, f, e, d, c, b, a = g, f, e, (d + t1) % MOD, c, b, a, (t1 + t2) % MOD
-            end
-            H[1] = (H[1] + a) % MOD
-            H[2] = (H[2] + b) % MOD
-            H[3] = (H[3] + c) % MOD
-            H[4] = (H[4] + d) % MOD
-            H[5] = (H[5] + e) % MOD
-            H[6] = (H[6] + f) % MOD
-            H[7] = (H[7] + g) % MOD
-            H[8] = (H[8] + h) % MOD
-        end
-
-        local out = {}
-        for i = 1, 8 do
-            local word = H[i]
-            out[#out + 1] = band(rshift(word, 24), 255)
-            out[#out + 1] = band(rshift(word, 16), 255)
-            out[#out + 1] = band(rshift(word, 8), 255)
-            out[#out + 1] = band(word, 255)
-        end
-        return out
-    end
-
-    local function sha256hex(s)
-        local parts = {}
-        for i, b in ipairs(sha256(s)) do
-            parts[i] = string.format("%02x", b)
-        end
-        return table.concat(parts)
-    end
-
-    -- -----------------------------------------------------------------------
-    -- Player ID
-    -- -----------------------------------------------------------------------
-    local ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" -- no I/O/0/1, so no RPID collisions with the tag
-
-    -- UserId -> 32 base-32 symbols (first 160 bits of the salted hash)
-    local function deriveCanon(userId)
-        local digest = sha256(CFG.SALT .. ":uid:" .. tostring(userId))
-        local acc, bits, out = 0, 0, {}
-        for i = 1, 20 do
-            acc = acc * 256 + digest[i]
-            bits = bits + 8
-            while bits >= 5 do
-                bits = bits - 5
-                local div = 2 ^ bits
-                local v = math.floor(acc / div)
-                acc = acc - v * div
-                out[#out + 1] = string.sub(ALPHA, v + 1, v + 1)
-            end
-        end
-        return table.concat(out)
-    end
-
-    local function formatId(canon)
-        local groups = {}
-        for i = 1, #canon, 4 do
-            groups[#groups + 1] = string.sub(canon, i, i + 3)
-        end
-        return "RPID-" .. table.concat(groups, "-")
-    end
-
-    -- accepts "RPID-XXXX-...", lowercase, no dashes, extra spaces
-    local function canonOf(s)
-        s = string.upper(tostring(s or ""))
-        s = string.gsub(s, "^%s*RPID", "")
-        return (string.gsub(s, "[^A-Z2-9]", ""))
-    end
-
-    local myUserId = LocalPlayer.UserId
-    local myCanon = deriveCanon(myUserId)
-    local myId = formatId(myCanon)
-
-    -- -----------------------------------------------------------------------
-    -- Files
-    -- -----------------------------------------------------------------------
-    local canFS = type(isfile) == "function" and type(writefile) == "function" and type(readfile) == "function"
-    local FOLDER = "RickPortal_cache"
-    local PATH_ID = "RickPortal_ID_" .. string.sub(myCanon, 1, 8) .. ".json"
-    -- root-level, same as PATH_ID, on purpose: a subfolder marker was getting wiped
-    -- independently of the root file on some executors, which kicked honest players
-    local PATH_MARK = "." .. string.sub(sha256hex(CFG.SALT .. ":mark:" .. myCanon), 1, 16) .. ".sys"
-    local PATH_BANS = FOLDER .. "/bans.json"
-    local PATH_TOKEN = FOLDER .. "/admin.key"
-
-    local function ensureFolder()
-        if type(isfolder) == "function" and type(makefolder) == "function" and not isfolder(FOLDER) then
-            pcall(makefolder, FOLDER)
-        end
-    end
-
-    local function safeRead(path)
-        local ok, res = pcall(readfile, path)
-        if ok and type(res) == "string" then
-            return res
-        end
-        return nil
-    end
-
-    local function safeWrite(path, text)
-        local ok = pcall(writefile, path, text)
-        return ok
-    end
-
-    local function sigFor(canon, made)
-        local stamp = tostring(math.floor(tonumber(made) or 0))
-        return string.sub(sha256hex(CFG.SALT .. ":sig:" .. canon .. ":" .. stamp), 1, 24)
-    end
-
-    -- "fresh" | "ok" | "unsupported" | "tamper", reason
-    local function checkIdentity()
-        if not canFS then
-            return "unsupported"
-        end
-        ensureFolder()
-
-        local hasId, hasMark = isfile(PATH_ID), isfile(PATH_MARK)
-        local sentinel = string.sub(sha256hex(CFG.SALT .. ":sentinel:" .. myCanon), 1, 32)
-
-        if not hasId and not hasMark then
-            local made = os.time()
-            local record = HttpService:JSONEncode({ v = 1, id = myId, made = made, sig = sigFor(myCanon, made) })
-            local okA = safeWrite(PATH_ID, record)
-            local okB = safeWrite(PATH_MARK, sentinel)
-            if okA and okB then
-                return "fresh"
-            end
-            return "unsupported"
-        end
-
-        if hasId ~= hasMark then
-            return "tamper", hasId and "marker file missing" or "identity file missing"
-        end
-
-        local okDecode, data = pcall(HttpService.JSONDecode, HttpService, safeRead(PATH_ID) or "")
-        if not okDecode or type(data) ~= "table" then
-            return "tamper", "identity file unreadable"
-        end
-        if canonOf(data.id) ~= myCanon or data.sig ~= sigFor(myCanon, data.made) then
-            return "tamper", "identity file was edited"
-        end
-        if safeRead(PATH_MARK) ~= sentinel then
-            return "tamper", "marker file was edited"
-        end
-        return "ok"
-    end
-
-    -- -----------------------------------------------------------------------
-    -- Ban list
-    -- -----------------------------------------------------------------------
-    local banned = {} -- canonical id -> reason
-
-    local function toSet(data)
-        local set = {}
-        for k, v in pairs(data.banned) do
-            if type(k) == "number" then
-                local c = canonOf(v) -- plain array of ids
-                if #c == 32 then set[c] = "" end
-            else
-                local c = canonOf(k) -- { id: reason }
-                if #c == 32 then set[c] = tostring(v) end
-            end
-        end
-        return set
-    end
-
-    local function decodeBans(body)
-        local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
-        if ok and type(data) == "table" and type(data.banned) == "table" then
-            return toSet(data)
-        end
-        return nil
-    end
-
-    -- returns "live", "cached" or nil
-    local function refreshBans()
-        local ok, body = pcall(function()
-            return game:HttpGet(CFG.BAN_LIST_URL .. "?t=" .. tostring(os.time()), true)
-        end)
-        if ok and type(body) == "string" then
-            local set = decodeBans(body)
-            if set then
-                banned = set
-                if canFS then
-                    ensureFolder()
-                    safeWrite(PATH_BANS, body)
-                end
-                return "live"
-            end
-        end
-        -- offline or blocked: fall back to the last good list so blocking the URL doesn't unban anyone
-        if canFS and isfile(PATH_BANS) then
-            local set = decodeBans(safeRead(PATH_BANS) or "")
-            if set then
-                banned = set
-                return "cached"
-            end
-        end
-        return nil
-    end
-
-    local function kick(message)
-        pcall(function()
-            if _G.RickPortal and _G.RickPortal.Destroy then
-                _G.RickPortal.Destroy()
-            end
-        end)
-        LocalPlayer:Kick("[RickPortal] " .. message)
-    end
-
-    local function banMessage()
-        local msg = "You are banned from this script.\nID: " .. myId
-        local reason = banned[myCanon]
-        if reason and reason ~= "" then
-            msg = msg .. "\nReason: " .. reason
-        end
-        return msg
-    end
-
-    -- -----------------------------------------------------------------------
-    -- Admin tools
-    -- -----------------------------------------------------------------------
-    local function isAdminId(userId)
-        local h = sha256hex(CFG.SALT .. ":admin:" .. tostring(userId))
-        for _, want in ipairs(CFG.ADMIN_HASHES) do
-            if want == h then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function isAdmin()
-        return isAdminId(myUserId)
-    end
-
-    -- the ban list URL must exist, be non-empty and match the stored hash
-    local function urlIntact()
-        local u = CFG.BAN_LIST_URL
-        if type(u) ~= "string" or u == "" then
-            return false
-        end
-        return sha256hex(CFG.SALT .. ":url:" .. u) == CFG.URL_HASH
-    end
-
-    -- username / UserId / RPID -> canonical id, userId (or nil, error)
-    local function resolveTarget(target)
-        if type(target) == "number" then
-            return deriveCanon(target), target
-        end
-        target = tostring(target)
-        local c = canonOf(target)
-        if #c == 32 and #target >= 32 then -- usernames are 20 chars max, so this is an ID
-            return c, nil
-        end
-        local asNumber = tonumber(target)
-        if asNumber then
-            return deriveCanon(asNumber), asNumber
-        end
-        local ok, userId = pcall(function()
-            return Players:GetUserIdFromNameAsync(target)
-        end)
-        if ok and type(userId) == "number" then
-            return deriveCanon(userId), userId
-        end
-        return nil, "couldn't find a Roblox user called '" .. target .. "'"
-    end
-
-    local function adminAction(action, target, reason)
-        if not isAdmin() then
-            return false, "admin only"
-        end
-        local canon, userId = resolveTarget(target)
-        if not canon then
-            warn("[RickGuard] " .. tostring(userId))
-            return false, userId
-        end
-        if canon == myCanon or (userId and isAdminId(userId)) then
-            return false, "can't ban an admin"
-        end
-
-        local id = formatId(canon)
-        local token = canFS and isfile(PATH_TOKEN) and safeRead(PATH_TOKEN) or nil
-        local req = (syn and syn.request) or http_request or request
-
-        if CFG.ADMIN_API_URL ~= "" and token and req then
-            local cleanToken = (string.gsub(token, "%s+", ""))
-            local ok, res = pcall(req, {
-                Url = CFG.ADMIN_API_URL,
-                Method = "POST",
-                Headers = { ["Content-Type"] = "application/json", ["Authorization"] = "Bearer " .. cleanToken },
-                Body = HttpService:JSONEncode({ action = action, id = id, reason = reason or "" }),
-            })
-            if ok and type(res) == "table" and (res.Success or res.StatusCode == 200) then
-                if action == "ban" then banned[canon] = reason or "" else banned[canon] = nil end
-                print("[RickGuard] " .. action .. " sent for " .. id)
-                return true, id
-            end
-            warn("[RickGuard] ban server rejected the request")
-            return false, "ban server rejected the request"
-        end
-
-        -- no ban server: hand the admin the exact line for bans.json
-        local line = '"' .. id .. '": ' .. HttpService:JSONEncode(reason or tostring(target)) .. ","
-        local copy = setclipboard or toclipboard
-        if action == "ban" then
-            if copy then pcall(copy, line) end
-            print("[RickGuard] add this line inside \"banned\" in bans.json" .. (copy and " (copied to clipboard)" or "") .. ":\n" .. line)
-        else
-            print("[RickGuard] remove this entry from bans.json:\n" .. id)
-        end
-        return true, id
-    end
-
-    -- -----------------------------------------------------------------------
-    -- Entry point
-    -- -----------------------------------------------------------------------
-    local function Start()
-        -- 0. ban list URL removed, emptied or edited -> kick (admin exempt)
-        if not urlIntact() and not isAdmin() then
-            kick("Script was modified (ban list removed or changed).\nID: " .. myId)
-            return false
-        end
-
-        -- 1. universal ban list
-        local source = refreshBans()
-        if banned[myCanon] ~= nil then
-            kick(banMessage())
-            return false
-        end
-        if not source and CFG.FAIL_CLOSED then
-            kick("Couldn't verify access. Try again later.")
-            return false
-        end
-
-        -- 2. identity file tripwire (never repaired, so it trips every run; admin exempt,
-        --    same as the URL check, so losing these files can't lock the admin out)
-        local state, why = checkIdentity()
-        if state == "tamper" and not isAdmin() then
-            kick("Your identity file was removed or modified (" .. tostring(why) .. ").\nID: " .. myId)
-            return false
-        end
-
-        -- 3. keep re-checking so a new ban reaches people already in a server
-        _G.__RickGuardGen = (_G.__RickGuardGen or 0) + 1
-        local gen = _G.__RickGuardGen
-        task.spawn(function()
-            while true do
-                task.wait(CFG.RECHECK_SECONDS)
-                if _G.__RickGuardGen ~= gen then
-                    return
-                end
-                refreshBans()
-                if banned[myCanon] ~= nil then
-                    kick(banMessage())
-                    return
-                end
-            end
-        end)
-        return true
-    end
-
-    -- integrity canary: rebuilt from pieces spread through the script
-    _G["RG40ddb014eaa6"] = function()
-        local t = _G["RT135cc5cc7026"]
-        if type(t) ~= "table" then
-            return false
-        end
-        local out = {}
-        for _, k in ipairs({77499, 93580, 87542, 80052}) do
-            local piece = t[k]
-            if type(piece) ~= "table" then
-                return false
-            end
-            for i = 1, 4 do
-                if type(piece[i]) ~= "number" then
-                    return false
-                end
-                out[#out + 1] = string.format("%04x", piece[i])
-            end
-        end
-        local want = table.concat(out)
-        local got = sha256hex(CFG.SALT .. ":canary:" .. tostring(CFG.ADMIN_HASHES[1]))
-        return got == want
-    end
-
-    RickGuard = {
-        ID = myId,
-        Start = Start,
-        Refresh = refreshBans,
-        IsBanned = function(idText)
-            local c = canonOf(idText)
-            return #c == 32 and banned[c] ~= nil
-        end,
-        Ban = function(target, reason)
-            return adminAction("ban", target, reason)
-        end,
-        Unban = function(target)
-            return adminAction("unban", target)
-        end,
-        HashUrl = function(url)
-            if not isAdmin() then
-                return nil
-            end
-            local h = sha256hex(CFG.SALT .. ":url:" .. tostring(url))
-            print("[RickGuard] URL_HASH = \"" .. h .. "\"")
-            return h
-        end,
-        -- true only for the account matching ADMIN_HASHES; UI code checks this
-        -- before showing the ban panel, so it never renders for anyone else
-        IsAdmin = isAdmin,
-        -- admin only: UserId -> that player's RPID, so the UI can label a grabbed
-        -- server code with the target's identity instead of the admin's own
-        DeriveId = function(userId)
-            if not isAdmin() or type(userId) ~= "number" then
-                return nil
-            end
-            return formatId(deriveCanon(userId))
-        end,
-    }
-    _G.RickGuard = RickGuard
-end
-
-if not RickGuard.Start() then
-    return
-end
-
 loadstring(game:HttpGet("https://raw.githubusercontent.com/NetlessScripter/Vegito-/refs/heads/main/Lock%20On"))()
 Players = game:GetService("Players")
 TweenService = game:GetService("TweenService")
@@ -1149,17 +643,6 @@ function closePortal(p)
     end
 end
 
-task.spawn(function()
-    local g = _G.__RickGuardGen
-    while task.wait(math.random(45, 150)) do
-        if _G.__RickGuardGen ~= g then return end
-        local ok, good = pcall(_G["RG40ddb014eaa6"])
-        if not (ok and good) then
-            game:GetService("Players").LocalPlayer:Kick("[RickPortal] Script integrity check failed.")
-            return
-        end
-    end
-end)
 function getGunDotPart()
     if gunHolder and gunHolder.Parent then
         return gunHolder:FindFirstChild("SwirlEye", true) or gunHolder:FindFirstChild("DomeCore", true)
@@ -1622,17 +1105,6 @@ function pfxImpact(pos, dir)
     pfxRays(cf, 8, 0.4, 1.5, 3.2, 0.25)
 end
 
-task.spawn(function()
-    local g = _G.__RickGuardGen
-    while task.wait(math.random(45, 150)) do
-        if _G.__RickGuardGen ~= g then return end
-        local ok, good = pcall(_G["RG40ddb014eaa6"])
-        if not (ok and good) then
-            game:GetService("Players").LocalPlayer:Kick("[RickPortal] Script integrity check failed.")
-            return
-        end
-    end
-end)
 function pfxOrbFinish(o)
     if o.chargeRing then
         o.chargeRing:Destroy()
@@ -1711,17 +1183,6 @@ function pfxPortalArc(frame, rx, ry, chord)
     pfxArc(a0, b, 5, 0.45, 0.12, 0.09)
 end
 
-task.spawn(function()
-    local g = _G.__RickGuardGen
-    while task.wait(math.random(45, 150)) do
-        if _G.__RickGuardGen ~= g then return end
-        local ok, good = pcall(_G["RG40ddb014eaa6"])
-        if not (ok and good) then
-            game:GetService("Players").LocalPlayer:Kick("[RickPortal] Script integrity check failed.")
-            return
-        end
-    end
-end)
 function pfxPortalCreate(p, frame)
     if not PORTAL_FX_ENABLED then return end
     local fx = {
@@ -3307,17 +2768,6 @@ function behindFxFloor(pos)
     return hit and hit.Position.Y or nil
 end
 
-task.spawn(function()
-    local g = _G.__RickGuardGen
-    while task.wait(math.random(45, 150)) do
-        if _G.__RickGuardGen ~= g then return end
-        local ok, good = pcall(_G["RG40ddb014eaa6"])
-        if not (ok and good) then
-            game:GetService("Players").LocalPlayer:Kick("[RickPortal] Script integrity check failed.")
-            return
-        end
-    end
-end)
 function behindFxFlash(pos, startSize, endSize, time, color)
     local ball = behindFxPart(Enum.PartType.Ball, Vector3.new(startSize, startSize, startSize), color, 0.1, CFrame.new(pos))
     local glow = Instance.new("PointLight")
@@ -3404,7 +2854,6 @@ function behindFxSparks(pos, count)
     Debris:AddItem(anchor, 1.2)
 end
 
-_G["RT135cc5cc7026"] = _G["RT135cc5cc7026"] or {}; _G["RT135cc5cc7026"][80052] = {27897, 1943, 65259, 38084}
 function behindFxStreak(a, b)
     local len = (b - a).Magnitude
     if len < 0.5 then return end
@@ -3415,7 +2864,6 @@ function behindFxStreak(a, b)
     behindFxTween(core, BEHIND_FX_STREAK_TIME * 0.8, { Size = Vector3.new(0.02, 0.02, len), Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 end
 
-_G["RT135cc5cc7026"] = _G["RT135cc5cc7026"] or {}; _G["RT135cc5cc7026"][87542] = {6525, 27572, 31580, 19010}
 function behindFxAfterimages(character, pathVector)
     local sources = {}
     for _, child in ipairs(character:GetChildren()) do
@@ -4315,7 +3763,6 @@ function destroyGun()
     end
 end
 
-_G["RT135cc5cc7026"] = _G["RT135cc5cc7026"] or {}; _G["RT135cc5cc7026"][93580] = {64980, 19530, 34377, 55904}
 function hideGun()
 end
 
@@ -5307,7 +4754,6 @@ function openTargetMenu()
     rowPx = math.clamp(math.floor(viewportY * 0.1), 48, 64)
     padPx = 8
     grabPx = 28
-    adminPx = 64
     headerPx = 44
     tabsPx = 34
     cardPad = 12
@@ -5658,15 +5104,7 @@ function openTargetMenu()
 
     function buildAreaRows()
         countPill.Text = #AREAS .. (#AREAS == 1 and " area" or " areas")
-        local isAdminUI = _G.RickGuard and _G.RickGuard.IsAdmin and _G.RickGuard.IsAdmin()
-        local extraPx = 0
-        if SERVER_JOIN_ENABLED then
-            extraPx = extraPx + padPx + grabPx
-        end
-        if isAdminUI then
-            extraPx = extraPx + padPx + adminPx
-        end
-        setCanvas(#AREAS + (SERVER_JOIN_ENABLED and 1 or 0), extraPx)
+        setCanvas(#AREAS + (SERVER_JOIN_ENABLED and 1 or 0), SERVER_JOIN_ENABLED and (padPx + grabPx) or 0)
 
         myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
 
@@ -5838,10 +5276,6 @@ function openTargetMenu()
 
             joinBtn.Activated:Connect(function()
                 local info, why = parseJoinScript(joinBox.Text)
-                if info and RickGuard and RickGuard.IsBanned(info.userName) then
-                    setStatus("That server code came from a banned user", errorColor)
-                    return
-                end
                 if not info then
                     setStatus(joinBox.Text == "" and "Paste a server code first" or why, errorColor)
                     return
@@ -5903,8 +5337,8 @@ function openTargetMenu()
                     jobId = game.JobId,
                     privateServerId = game.PrivateServerId,
                     privateServerOwnerId = game.PrivateServerOwnerId,
-                    userId = "",
-                    userName = RickGuard.ID,
+                    userId = LocalPlayer.UserId,
+                    userName = LocalPlayer.Name,
                     time = os.time(),
                 })
                 if not built or type(code) ~= "string" then
@@ -5921,155 +5355,6 @@ function openTargetMenu()
                     grabFlash("See console", errorColor)
                 end
             end)
-
-            -- Admin panel: only built when RickGuard confirms this account's
-            -- hash matches ADMIN_HASHES. Nothing is added to the UI for anyone else.
-            if _G.RickGuard and _G.RickGuard.IsAdmin and _G.RickGuard.IsAdmin() then
-                local adminRow = Instance.new("Frame")
-                adminRow.Name = "AdminRow"
-                adminRow.LayoutOrder = #AREAS + 3
-                adminRow.BackgroundTransparency = 1
-                adminRow.BorderSizePixel = 0
-                adminRow.Size = UDim2.new(1, 0, 0, adminPx)
-                adminRow.Parent = list
-
-                local adminBox = Instance.new("TextBox")
-                adminBox.Name = "AdminTarget"
-                adminBox.ClearTextOnFocus = false
-                adminBox.PlaceholderText = "Username, UserId or RPID"
-                adminBox.Text = ""
-                adminBox.BackgroundColor3 = rowColor
-                adminBox.BorderSizePixel = 0
-                adminBox.Position = UDim2.new(0, 0, 0, 0)
-                adminBox.Size = UDim2.new(1, 0, 0, 28)
-                adminBox.FontFace = fontReg
-                adminBox.TextSize = 13
-                adminBox.TextColor3 = textColor
-                adminBox.PlaceholderColor3 = mutedColor
-                adminBox.ClipsDescendants = true
-                adminBox.ZIndex = 2
-                adminBox.Parent = adminRow
-                local adminBoxCorner = Instance.new("UICorner")
-                adminBoxCorner.CornerRadius = UDim.new(0, 8)
-                adminBoxCorner.Parent = adminBox
-                local adminBoxPad = Instance.new("UIPadding")
-                adminBoxPad.PaddingLeft = UDim.new(0, 10)
-                adminBoxPad.PaddingRight = UDim.new(0, 10)
-                adminBoxPad.Parent = adminBox
-
-                local function adminBtn(text, col, color, textColor3)
-                    -- 3 equal columns with 4px gaps: col is 0, 1 or 2
-                    local gap = 4
-                    local w = 1 / 3
-                    local b = Instance.new("TextButton")
-                    b.AutoButtonColor = false
-                    b.BackgroundColor3 = color
-                    b.BorderSizePixel = 0
-                    b.Position = UDim2.new(w * col, col == 0 and 0 or (col == 2 and -gap or 0), 0, 36)
-                    b.Size = UDim2.new(w, col == 1 and -gap or -gap / 2, 0, 24)
-                    b.FontFace = fontBold
-                    b.Text = text
-                    b.TextSize = 12
-                    b.TextColor3 = textColor3
-                    b.ZIndex = 2
-                    b.Parent = adminRow
-                    local c = Instance.new("UICorner")
-                    c.CornerRadius = UDim.new(0, 8)
-                    c.Parent = b
-                    return b
-                end
-
-                local banBtn = adminBtn("Ban", 0, Color3.fromRGB(196, 60, 60), Color3.fromRGB(255, 235, 235))
-                local unbanBtn = adminBtn("Unban", 1, rowHoverColor, textColor)
-                local grabTargetBtn = adminBtn("Grab", 2, accent, accentText)
-
-                local adminToken = 0
-                local function adminFlash(btn, label, msg, color)
-                    adminToken = adminToken + 1
-                    local mine = adminToken
-                    btn.Text = msg
-                    task.delay(1.6, function()
-                        if adminToken == mine and btn.Parent then
-                            btn.Text = label
-                        end
-                    end)
-                end
-
-                banBtn.Activated:Connect(function()
-                    local target = adminBox.Text
-                    if target == "" then
-                        adminFlash(banBtn, "Ban", "Type a target", errorColor)
-                        return
-                    end
-                    local ok, idOrErr = _G.RickGuard.Ban(target, "banned via UI")
-                    adminFlash(banBtn, "Ban", ok and "Banned" or "Failed", ok and accent or errorColor)
-                end)
-
-                unbanBtn.Activated:Connect(function()
-                    local target = adminBox.Text
-                    if target == "" then
-                        adminFlash(unbanBtn, "Unban", "Type a target", errorColor)
-                        return
-                    end
-                    local ok, idOrErr = _G.RickGuard.Unban(target)
-                    adminFlash(unbanBtn, "Unban", ok and "Unbanned" or "Failed", ok and accent or errorColor)
-                end)
-
-                -- Grab Target: builds a server code for the CURRENT server (the only
-                -- server Roblox lets a client see), tagged with the target's RPID
-                -- instead of yours, so the code and a later Join both carry their
-                -- identity. The target has to be in this server with you; there is
-                -- no way to pull server info for a player who is somewhere else.
-                grabTargetBtn.Activated:Connect(function()
-                    local nameOrId = adminBox.Text
-                    if nameOrId == "" then
-                        adminFlash(grabTargetBtn, "Grab", "Type a target", errorColor)
-                        return
-                    end
-                    local targetPlayer
-                    local asNumber = tonumber(nameOrId)
-                    for _, plr in ipairs(Players:GetPlayers()) do
-                        if (asNumber and plr.UserId == asNumber)
-                            or string.lower(plr.Name) == string.lower(nameOrId)
-                            or string.lower(plr.DisplayName) == string.lower(nameOrId) then
-                            targetPlayer = plr
-                            break
-                        end
-                    end
-                    if not targetPlayer then
-                        adminFlash(grabTargetBtn, "Grab", "Not in this server", errorColor)
-                        return
-                    end
-
-                    local gun = _G.RickPortal
-                    if type(gun) ~= "table" or type(gun.EncodeServer) ~= "function" then
-                        adminFlash(grabTargetBtn, "Grab", "Gun not loaded", errorColor)
-                        return
-                    end
-                    local targetId = _G.RickGuard.DeriveId(targetPlayer.UserId) or RickGuard.ID
-                    local built, code = pcall(gun.EncodeServer, {
-                        placeId = game.PlaceId,
-                        gameId = game.GameId,
-                        jobId = game.JobId,
-                        privateServerId = game.PrivateServerId,
-                        privateServerOwnerId = game.PrivateServerOwnerId,
-                        userId = "",
-                        userName = targetId,
-                        time = os.time(),
-                    })
-                    if not built or type(code) ~= "string" then
-                        adminFlash(grabTargetBtn, "Grab", "Failed", errorColor)
-                        return
-                    end
-                    local copy = setclipboard or toclipboard or (syn and syn.write_clipboard)
-                    if copy and pcall(copy, code) then
-                        adminFlash(grabTargetBtn, "Grab", "Copied!", accent)
-                    else
-                        print(code)
-                        adminFlash(grabTargetBtn, "Grab", "See console", errorColor)
-                    end
-                end)
-            end
         end
     end
 
@@ -6346,7 +5631,6 @@ local function makeEmitter(parent)
 	e.Parent = parent
 	return e
 end
-_G["RT135cc5cc7026"] = _G["RT135cc5cc7026"] or {}; _G["RT135cc5cc7026"][77499] = {35689, 12727, 18933, 54471}
 local function makeStump(parent, piece, localCF, size, limbName)
 	local nm = limbName or piece.name
 	local isSocket = piece.name == "Torso"
